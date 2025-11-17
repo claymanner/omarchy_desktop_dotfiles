@@ -1,0 +1,6 @@
+include "%H/.local/share/omarchy/default/xcompose"
+
+# Identification
+<Multi_key> <space> <n> : "Clayton Mannerow"
+<Multi_key> <space> <e> : "cmannerow@gmail.com"
+<Multi_key> <space> <w> : "clayton.mannerow@e-wee.com"
