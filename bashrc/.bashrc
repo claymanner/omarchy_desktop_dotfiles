@@ -14,4 +14,7 @@ export PATH="$HOME/.local/bin:$PATH"
 [ -n "$TMUX" ] && return
 [ -n "$VSCODE_PID" ] && return
 [ "$EUID" -eq 0 ] && return
-tmux new-session -A -s main
+
+if command -v tmux >/dev/null; then
+    tmux attach -t main 2>/dev/null || tmux new -s main
+fi
