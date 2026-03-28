@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+pane_pid="$1"
+pane_command="$2"
+pane_path="$3"
+pane_title="$4"
+label_mode="${5:-short}"
+
+trim_path() {
+  local path="$1"
+
+  if [ "$label_mode" = "long" ]; then
+    printf '%s\n' "$path" | rev | cut -d'/' -f-2 | rev
+  else
+    basename "$path"
+  fi
+}
+
+shell_label() {
+  trim_path "$pane_path"
+}
+
+app_from_process_tree() {
+  local session_id tree
+
+  session_id="$(ps -o sid= -p "$pane_pid" 2>/dev/null | tr -d ' ')"
+  [ -n "$session_id" ] || return 1
+
+  tree="$(ps -o comm=,args= --forest -g "$session_id" 2>/dev/null)"
+
+  case "$tree" in
+    *"/bin/codex"*|*" codex "*)
+      printf 'codex\n'
+      return 0
+      ;;
+    *" claude "*|*"/claude"*|*" claude-code "*)
+      printf 'claude\n'
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+case "$pane_command" in
+  ssh)
+    printf '%s\n' "${pane_title:-ssh}"
+    ;;
+  nvim|vim)
+    printf 'nvim\n'
+    ;;
+  bash|zsh|fish|sh)
+    shell_label
+    ;;
+  node)
+    app_from_process_tree || printf '%s\n' "$pane_command"
+    ;;
+  *)
+    printf '%s\n' "$pane_command"
+    ;;
+esac
