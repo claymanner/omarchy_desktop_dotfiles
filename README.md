@@ -11,12 +11,13 @@ This repo is set up in a `stow`-friendly layout:
 - `tmux/.config/tmux/tmux.conf` -> `~/.config/tmux/tmux.conf`
 - `zsh/.zshrc` -> `~/.zshrc`
 - `xcompose/.XCompose` -> `~/.XCompose`
+- `hypridle/.config/hypr/hypridle.conf` -> `~/.config/hypr/hypridle.conf`
 
 Example:
 
 ```bash
 cd ~/omarchy_desktop_dotfiles
-stow bashrc tmux zsh xcompose
+stow bashrc tmux zsh xcompose hypridle
 ```
 
 ## What is customized
@@ -41,6 +42,11 @@ stow bashrc tmux zsh xcompose
 ### Hyprenv
 
 - Changes the default screenshot file location to Nextcloud.
+
+### Hypridle
+
+- Keeps Omarchy screensaver and lock behavior.
+- Leaves DPMS screen-off disabled because this system has failed to recover cleanly from it.
 
 ### Ghostty
 

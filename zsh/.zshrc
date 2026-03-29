@@ -29,6 +29,11 @@ _tmux_ssh_target() {
   done
 }
 
+_tmux_set_title() {
+  [ -n "$TMUX" ] || return 0
+  tmux select-pane -T "$1" >/dev/null 2>&1 || true
+}
+
 ssh() {
   local ssh_target="" old_title="" ssh_status
 
@@ -36,7 +41,7 @@ ssh() {
 
   if [ -n "$TMUX" ] && [ -n "$ssh_target" ]; then
     old_title="$(tmux display-message -p -t "${TMUX_PANE:-}" "#{pane_title}" 2>/dev/null)"
-    tmux select-pane -T "$ssh_target" >/dev/null 2>&1 || true
+    _tmux_set_title "$ssh_target"
   fi
 
   command ssh "$@"
@@ -47,6 +52,24 @@ ssh() {
   fi
 
   return "$ssh_status"
+}
+
+codex() {
+  local old_title="" codex_status
+
+  if [ -n "$TMUX" ]; then
+    old_title="$(tmux display-message -p -t "${TMUX_PANE:-}" "#{pane_title}" 2>/dev/null)"
+    _tmux_set_title "codex"
+  fi
+
+  command codex "$@"
+  codex_status=$?
+
+  if [ -n "$TMUX" ]; then
+    _tmux_set_title "${old_title:-${PWD##*/}}"
+  fi
+
+  return "$codex_status"
 }
 
 if [ -z "$TMUX" ]; then tmux; fi
