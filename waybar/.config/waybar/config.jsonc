@@ -7,6 +7,7 @@
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
   "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
   "modules-right": [
+    "custom/weather",
     "tray",
     "bluetooth",
     "network",
@@ -72,8 +73,8 @@
     "format-wifi": "{icon}",
     "format-ethernet": "󰀂",
     "format-disconnected": "󰤮",
-    "tooltip-format-wifi": "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
-    "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+    "tooltip-format-wifi": "{essid} ({frequency} GHz)",
+    "tooltip-format-ethernet": "Connected",
     "tooltip-format-disconnected": "Disconnected",
     "interval": 3,
     "spacing": 1,
@@ -137,6 +138,16 @@
     "exec": "$OMARCHY_PATH/default/waybar/indicators/notification-silencing.sh",
     "signal": 10,
     "return-type": "json"
+  },
+  "custom/weather": {
+    "exec": "$HOME/.config/waybar/scripts/weather.sh",
+    "return-type": "json",
+    "interval": 600,
+    "signal": 11,
+    "format": "{}",
+    "tooltip": true,
+    "on-click": "pkill -RTMIN+11 waybar",
+    "on-click-right": "xdg-open https://wttr.in/"
   },
   "custom/voxtype": {
     "exec": "omarchy-voxtype-status",
