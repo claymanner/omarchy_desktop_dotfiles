@@ -4,8 +4,9 @@
 
 set -u
 
-UNITS="${WEATHER_UNITS:-f}"
-LOCATION="${WEATHER_LOCATION:-}"
+UNITS="${WEATHER_UNITS:-c}"
+LOCATION="${WEATHER_LOCATION:-44.567,-79.519}"
+DISPLAY_PLACE="${WEATHER_PLACE:-East Oro, Ontario}"
 
 raw=$(curl -fsS --max-time 8 "https://wttr.in/${LOCATION}?format=j1" 2>/dev/null) || {
   printf '{"text":"󰆐","tooltip":"weather unavailable","class":"error"}\n'
@@ -81,8 +82,7 @@ else
   wind="${wind_mph} mph"
 fi
 
-place="$area"
-[ -n "$region" ] && place="$area, $region"
+place="$DISPLAY_PLACE"
 
 tooltip=$(printf '<b>%s</b>\n%s\nFeels like %s · Humidity %s%%\nWind %s\n<i>Updated %s</i>' \
   "$desc" "$place" "$feels" "$humidity" "$wind" "$obs")
