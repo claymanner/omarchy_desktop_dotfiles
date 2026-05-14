@@ -1,0 +1,8 @@
+[Unit]
+Description=Pull latest dotfiles from origin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/omarchy_desktop_dotfiles/scripts/sync.sh

@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic dotfiles sync
+Requires=dotfiles-sync.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
