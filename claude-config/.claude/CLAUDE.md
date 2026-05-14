@@ -54,3 +54,52 @@ When you're operating inside a specific repo, its own `CLAUDE.md` is authoritati
 ## Per-project Jarvis memory still applies
 
 The fspbx-project memory at `~/.claude/projects/-home-cmannerow-Nextcloud-Documents-programming-fspbx/memory/` is still active and gets auto-loaded. Use it for fspbx-specific things; promote durable cross-tool facts to the vault.
+
+## Dotfiles + Claude config (cross-machine sync)
+
+Parts of `~/.claude/` are stowed from `~/omarchy_desktop_dotfiles` (a git repo at `claymanner/omarchy_desktop_dotfiles`) so Clayton's laptop + desktop stay in sync. Current stow packages:
+
+| Package | Stows into | Contents |
+|---|---|---|
+| `claude-config` | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | This file + global settings. |
+| `claude-skills` | `~/.claude/skills/<name>/` | Reusable Claude skills (currently: `inbox-triage`). |
+
+**Tracked** = `~/.claude/CLAUDE.md`, `~/.claude/settings.json`, `~/.claude/skills/*`. Everything else under `~/.claude/` is per-machine state (`.credentials.json`, `history.jsonl`, `sessions/`, `tasks/`, `cache/`, `agent-state/`, `settings.local.json`, etc.) — never commit those.
+
+### When you (Claude) should update this dotfiles repo
+
+- **Built a new reusable skill** → put it under `~/omarchy_desktop_dotfiles/claude-skills/.claude/skills/<name>/`, stow, commit, push.
+- **Edited this file (`CLAUDE.md`)** → just save; the symlink means the repo file is updated. Commit + push.
+- **Changed `settings.json`** → same: symlinked, repo is updated. Commit + push.
+- **Bumped an existing skill** (new logic, new template) → edit in place, commit + push. The change propagates to the laptop next `git pull && stow -R claude-skills`.
+
+### How to update + push (canonical pattern)
+
+```bash
+cd ~/omarchy_desktop_dotfiles
+git add claude-config/ claude-skills/        # or whichever package you changed
+git diff --cached --stat
+git commit -m "<short summary of the change>"
+git push origin main
+```
+
+If you also stowed a NEW package, run `stow --target="$HOME" <pkg>` from the repo root first to symlink it into place.
+
+### When new skills land — name + describe well
+
+Skills are auto-loaded; the `description:` frontmatter is what triggers selection in future sessions. Make it:
+- specific about WHEN to use (trigger phrases)
+- specific about WHEN to skip (don't fire on adjacent work)
+- ~80-200 words; longer than this gets truncated in the runtime catalog.
+
+### Where memories live (NOT yet dotfiled, deliberate)
+
+`~/.claude/projects/*/memory/*.md` files are auto-managed by the memory system. They're great per-user, but most are project-specific paths that don't translate to the laptop one-to-one (the project hash in the path encodes the full filesystem location). Treat them as machine-local for now. If you find yourself adding a memory that's clearly cross-machine (a vault reference, a global preference, etc.), mention to Clayton — we may eventually carve a `claude-memory` package for the universal slice.
+
+### When you make changes that affect both desktop AND laptop
+
+Both machines run the same stow setup. After committing on this machine, remind Clayton (or do via SSH if you have access) to:
+```bash
+cd ~/omarchy_desktop_dotfiles && git pull && stow -R claude-config claude-skills
+```
+on the other machine to pick up the changes.
