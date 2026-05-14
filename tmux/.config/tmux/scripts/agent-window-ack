@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+window_id="$1"
+fallback_name="$2"
+label_mode="${3:-long}"
+threshold="${4:-5}"
+automatic_rename="${5:-1}"
+
+agent_label="$HOME/.config/tmux/scripts/agent-pane-label"
+state_file="/tmp/tmux-agent-window-${UID}-${window_id#@}"
+
+display_label() {
+  local label="$1"
+
+  if [ "$automatic_rename" = "0" ]; then
+    printf '%s\n' "$fallback_name"
+  else
+    printf '%s\n' "$label"
+  fi
+}
+
+state_key() {
+  local state="$1" label="$2"
+  printf '%s:%s' "$state" "$label" | sha1sum | awk '{print $1}'
+}
+
+while IFS=$'\t' read -r pane_id pane_pid pane_command pane_path pane_title _pane_active; do
+  [ -n "$pane_id" ] || continue
+
+  label="$("$agent_label" "$pane_id" "$pane_pid" "$pane_command" "$pane_path" "$pane_title" "$label_mode" "$threshold")"
+
+  case "$label" in
+    INPUT\ *)
+      state="input"
+      chosen_label="$(display_label "${label#INPUT }")"
+      ;;
+    WAIT\ *)
+      state="wait"
+      chosen_label="$(display_label "${label#WAIT }")"
+      ;;
+    *)
+      continue
+      ;;
+  esac
+
+  key="$(state_key "$state" "$chosen_label")"
+  last_notify_value=0
+  if [ -f "$state_file" ]; then
+    # shellcheck disable=SC1090
+    . "$state_file" 2>/dev/null || true
+    last_notify_value="${last_notify:-0}"
+  fi
+
+  {
+    printf 'window_state=%q\n' "$state"
+    printf 'last_label=%q\n' "$chosen_label"
+    printf 'last_notify=%q\n' "$last_notify_value"
+    printf 'ack_key=%q\n' "$key"
+  } >"$state_file"
+  exit 0
+done < <(tmux list-panes -t "$window_id" -F '#{pane_id}	#{pane_pid}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_active}' 2>/dev/null)

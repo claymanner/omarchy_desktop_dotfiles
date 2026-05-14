@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+
+window_id="$1"
+fallback_name="$2"
+label_mode="${3:-long}"
+threshold="${4:-60}"
+automatic_rename="${5:-1}"
+window_active="${6:-0}"
+
+agent_label="$HOME/.config/tmux/scripts/agent-pane-label"
+state_file="/tmp/tmux-agent-window-${UID}-${window_id#@}"
+
+thm_bg="#222436"
+thm_fg="#c8d3f5"
+thm_red="#ff757f"
+thm_yellow="#ffc777"
+thm_blue="#82aaff"
+
+notify_once() {
+  local state="$1" label="$2" now previous_state previous_notify
+
+  now="$(date +%s)"
+  previous_state=""
+  previous_notify=0
+
+  if [ -f "$state_file" ]; then
+    # shellcheck disable=SC1090
+    . "$state_file" 2>/dev/null || true
+    previous_state="${window_state:-}"
+    previous_notify="${last_notify:-0}"
+  fi
+
+  {
+    printf 'window_state=%q\n' "$state"
+    printf 'last_label=%q\n' "$label"
+    printf 'last_notify=%q\n' "$previous_notify"
+  } >"$state_file"
+
+  [ "$state" = "run" ] && return 0
+  [ "$state" = "$previous_state" ] && return 0
+  [ "$previous_state" = "" ] && return 0
+  [ $((now - previous_notify)) -lt 10 ] && return 0
+
+  {
+    printf 'window_state=%q\n' "$state"
+    printf 'last_label=%q\n' "$label"
+    printf 'last_notify=%q\n' "$now"
+  } >"$state_file"
+
+  if command -v canberra-gtk-play >/dev/null 2>&1; then
+    canberra-gtk-play -i message-new-instant -d "tmux agent ${state}" >/dev/null 2>&1 &
+  elif command -v paplay >/dev/null 2>&1 && [ -f /usr/share/sounds/freedesktop/stereo/message-new-instant.oga ]; then
+    paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga >/dev/null 2>&1 &
+  fi
+
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a tmux "Agent ${state}" "$label" >/dev/null 2>&1 &
+  fi
+}
+
+format_label() {
+  local state="$1" label="$2"
+
+  case "$state" in
+    input)
+      printf '#[fg=%s,bg=%s,bold] ! #[fg=%s,bg=%s] %s' "$thm_bg" "$thm_red" "$thm_red" "$thm_bg" "$label"
+      ;;
+    wait)
+      printf '#[fg=%s,bg=%s,bold] ● #[fg=%s,bg=%s] %s' "$thm_bg" "$thm_yellow" "$thm_yellow" "$thm_bg" "$label"
+      ;;
+    working)
+      printf '#[fg=%s,bg=%s,bold] ▶ #[fg=%s,bg=%s] %s' "$thm_bg" "$thm_blue" "$thm_blue" "$thm_bg" "$label"
+      ;;
+    *)
+      printf '%s' "$label"
+      ;;
+  esac
+}
+
+first_wait=""
+first_run=""
+active_label=""
+state="run"
+chosen_label=""
+
+display_label() {
+  local label="$1"
+
+  if [ "$automatic_rename" = "0" ]; then
+    printf '%s\n' "$fallback_name"
+  else
+    printf '%s\n' "$label"
+  fi
+}
+
+state_key() {
+  local state="$1" label="$2"
+  printf '%s:%s' "$state" "$label" | sha1sum | awk '{print $1}'
+}
+
+acknowledged() {
+  local key="$1" ack_key=""
+
+  [ -f "$state_file" ] || return 1
+  # shellcheck disable=SC1090
+  . "$state_file" 2>/dev/null || true
+  [ "${ack_key:-}" = "$key" ]
+}
+
+while IFS=$'\t' read -r pane_id pane_pid pane_command pane_path pane_title pane_active; do
+  [ -n "$pane_id" ] || continue
+
+  label="$("$agent_label" "$pane_id" "$pane_pid" "$pane_command" "$pane_path" "$pane_title" "$label_mode" "$threshold")"
+
+  case "$label" in
+    INPUT\ *)
+      chosen_label="$(display_label "${label#INPUT }")"
+      state="input"
+      key="$(state_key "$state" "$chosen_label")"
+      if acknowledged "$key"; then
+        format_label "run" "$chosen_label"
+        printf '\n'
+        exit 0
+      fi
+      notify_once "$state" "$chosen_label"
+      format_label "$state" "$chosen_label"
+      printf '\n'
+      exit 0
+      ;;
+    WAIT\ *)
+      [ -z "$first_wait" ] && first_wait="${label#WAIT }"
+      ;;
+    WORKING\ *)
+      [ -z "$first_run" ] && first_run="${label#WORKING }"
+      [ "$pane_active" = "1" ] && active_label="${label#WORKING }"
+      continue
+      ;;
+  esac
+
+  [ "$pane_active" = "1" ] && active_label="$label"
+done < <(tmux list-panes -t "$window_id" -F '#{pane_id}	#{pane_pid}	#{pane_current_command}	#{pane_current_path}	#{pane_title}	#{pane_active}' 2>/dev/null)
+
+if [ -n "$first_wait" ]; then
+  state="wait"
+  chosen_label="$(display_label "$first_wait")"
+elif [ -n "$first_run" ]; then
+  state="working"
+  chosen_label="$(display_label "${active_label:-$first_run}")"
+elif [ -n "$active_label" ]; then
+  state="run"
+  chosen_label="$(display_label "$active_label")"
+else
+  state="run"
+  chosen_label="$fallback_name"
+fi
+
+if [ "$state" = "wait" ]; then
+  key="$(state_key "$state" "$chosen_label")"
+  if acknowledged "$key"; then
+    format_label "run" "$chosen_label"
+    printf '\n'
+    exit 0
+  fi
+fi
+
+notify_once "$state" "$chosen_label"
+format_label "$state" "$chosen_label"
+printf '\n'

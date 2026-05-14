@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+
+pane_id="$1"
+pane_pid="$2"
+pane_command="$3"
+pane_path="$4"
+pane_title="$5"
+label_mode="${6:-short}"
+threshold="${7:-60}"
+
+pane_label="$HOME/.config/tmux/scripts/pane-label"
+
+trim_path() {
+  if [ "$label_mode" = "long" ]; then
+    printf '%s\n' "$pane_path" | rev | cut -d'/' -f-2 | rev
+  else
+    basename "$pane_path"
+  fi
+}
+
+label() {
+  "$pane_label" "$pane_pid" "$pane_command" "$pane_path" "$pane_title" "$label_mode"
+}
+
+agent_from_process_tree() {
+  local session_id tree
+
+  session_id="$(ps -o sid= -p "$pane_pid" 2>/dev/null | tr -d ' ')"
+  [ -n "$session_id" ] || return 1
+
+  tree="$(ps -o comm=,args= --forest -g "$session_id" 2>/dev/null)"
+
+  case "$tree" in
+    *"/bin/codex"*|*" codex "*)
+      printf 'codex\n'
+      return 0
+      ;;
+    *" claude "*|*"/claude"*|*" claude-code "*)
+      printf 'claude\n'
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+agent="$(agent_from_process_tree)" || {
+  agent=""
+}
+
+now="$(date +%s)"
+state="/tmp/tmux-agent-pane-${UID}-${pane_id#%}"
+
+content="$(tmux capture-pane -p -J -t "$pane_id" -S -120 2>/dev/null | sed 's/[[:space:]]*$//')"
+tail_text="$(printf '%s\n' "$content" | tail -45)"
+bottom_text="$(printf '%s\n' "$content" | tail -12)"
+
+base_label="$(label)"
+
+if [ -z "$agent" ] && printf '%s\n' "$tail_text" | grep -Eiq '(would you like to run the following command|press enter to confirm|yes, proceed|ask again for commands|tell codex what to do differently|gpt-[0-9].*~/|› )'; then
+  agent="codex"
+  base_label="codex:$(trim_path "$pane_path")"
+elif [ -z "$agent" ] && printf '%s\n' "$tail_text" | grep -Eq '^[[:space:]]*[❯]'; then
+  agent="claude"
+  base_label="claude:$(trim_path "$pane_path")"
+fi
+
+if [ -z "$agent" ]; then
+  printf '%s\n' "$base_label"
+  exit 0
+fi
+
+if printf '%s\n' "$bottom_text" | grep -Eiq '(waiting for background terminal|working \(|running .*(esc to interrupt)|esc to interrupt)'; then
+  printf 'WORKING %s\n' "$base_label"
+  exit 0
+elif printf '%s\n' "$bottom_text" | grep -Eiq '(would you like to run the following command|press enter to confirm|yes, proceed|ask again for commands|tell codex what to do differently)'; then
+  printf 'INPUT %s\n' "$base_label"
+  exit 0
+elif printf '%s\n' "$bottom_text" | grep -Eq '^[[:space:]]*[›❯]'; then
+  printf 'INPUT %s\n' "$base_label"
+  exit 0
+fi
+hash="$(printf '%s' "$content" | sha1sum | awk '{print $1}')"
+
+last_hash=""
+last_change="$now"
+
+if [ -f "$state" ]; then
+  # shellcheck disable=SC1090
+  . "$state" 2>/dev/null || true
+fi
+
+if [ "$hash" != "$last_hash" ]; then
+  last_hash="$hash"
+  last_change="$now"
+  {
+    printf 'last_hash=%q\n' "$last_hash"
+    printf 'last_change=%q\n' "$last_change"
+  } >"$state"
+fi
+
+idle=$((now - last_change))
+status="run"
+
+if printf '%s\n' "$bottom_text" | grep -Eiq '(^|[^[:alpha:]])(approve|allow|continue|confirm|permission|do you want|waiting for input|press enter|yes/no|y/n)([^[:alpha:]]|$)'; then
+  status="INPUT"
+elif [ "$idle" -ge "$threshold" ]; then
+  status="WAIT"
+fi
+
+case "$status" in
+  INPUT|WAIT)
+    printf '%s %s\n' "$status" "$base_label"
+    ;;
+  *)
+    printf '%s\n' "$base_label"
+    ;;
+esac

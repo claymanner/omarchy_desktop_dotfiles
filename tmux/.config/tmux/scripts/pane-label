@@ -30,11 +30,11 @@ app_from_process_tree() {
 
   case "$tree" in
     *"/bin/codex"*|*" codex "*)
-      printf 'codex\n'
+      printf 'codex:%s\n' "$(trim_path "$pane_path")"
       return 0
       ;;
     *" claude "*|*"/claude"*|*" claude-code "*)
-      printf 'claude\n'
+      printf 'claude:%s\n' "$(trim_path "$pane_path")"
       return 0
       ;;
   esac
@@ -54,6 +54,12 @@ case "$pane_command" in
     ;;
   node)
     app_from_process_tree || printf '%s\n' "$pane_command"
+    ;;
+  claude|claude-code)
+    printf 'claude:%s\n' "$(basename "$pane_path")"
+    ;;
+  codex)
+    printf 'codex:%s\n' "$(basename "$pane_path")"
     ;;
   *)
     printf '%s\n' "$pane_command"
