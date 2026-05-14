@@ -107,8 +107,12 @@ path under `$HOME`:
 - `SUPER + SHIFT + J` → toggle a Jarvis voice session.
 - `INSERT` (no modifier) → toggle Voxtype dictation (Glove80 thumb-key
   friendly).
-- `SUPER + V` → sends `Shift+Insert` (terminal paste). Use plain `Ctrl+V`
-  inside browsers and most GUI apps.
+- **Paste**:
+  - In Ghostty / terminals: `Ctrl + Shift + V` (Ghostty native).
+  - In browsers / GUI apps: `Ctrl + V`.
+  - Omarchy's stock `SUPER + V` binding uses Hyprland's `sendshortcut`
+    dispatcher, which has a known bug delivering synthesized keys to native
+    Wayland apps (Ghostty, Discord, etc.) — don't rely on it.
 - `SUPER + ALT + RETURN` → new floating terminal that drops you into tmux.
 
 ### Hyprenv
