@@ -1,0 +1,37 @@
+  PREFIX = Ctrl-F   (then press one of:)
+
+  ─── Panes ──────────────────────────────
+   v    split vertical (left/right)
+   s    split horizontal (top/bottom)
+   h j k l   move between panes
+   z    zoom toggle on active pane
+   x    kill pane
+
+  ─── Windows ────────────────────────────
+   c    new window (current path)
+   ,    rename window
+   n / p     next / previous window
+   M-1..9    (no prefix) jump to window N
+   M-Left/Right     (no prefix) prev/next
+   M-S-Left/Right   (no prefix) move window
+
+  ─── Sessions ───────────────────────────
+   C    new session (current path)
+   R    rename session
+   K    kill session
+   P / N     prev / next session
+   M-Up / M-Down    (no prefix) prev/next session
+   $    rename session (built-in)
+   s    choose session (built-in, hold prefix)
+
+  ─── Copy mode (vi) ─────────────────────
+   [    enter copy mode
+   v    start selection
+   y    yank to clipboard
+   ]    paste
+
+  ─── Config ─────────────────────────────
+   r    reload config
+   ?    this cheatsheet
+
+  Press q to close.

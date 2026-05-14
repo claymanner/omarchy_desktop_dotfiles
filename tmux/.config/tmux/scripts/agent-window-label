@@ -60,16 +60,24 @@ notify_once() {
 
 format_label() {
   local state="$1" label="$2"
+  # Restore the outer window-status bg after the badge so the active block
+  # highlight extends across the label. window_active is set in caller scope.
+  local label_bg="default"
+  local label_fg="default"
+  if [ "${window_active:-0}" = "1" ]; then
+    label_bg="$thm_blue"
+    label_fg="$thm_bg"
+  fi
 
   case "$state" in
     input)
-      printf '#[fg=%s,bg=%s,bold] ! #[fg=%s,bg=%s] %s' "$thm_bg" "$thm_red" "$thm_red" "$thm_bg" "$label"
+      printf '#[fg=%s,bg=%s,bold] ! #[fg=%s,bg=%s,bold] %s' "$thm_bg" "$thm_red" "$label_fg" "$label_bg" "$label"
       ;;
     wait)
-      printf '#[fg=%s,bg=%s,bold] ● #[fg=%s,bg=%s] %s' "$thm_bg" "$thm_yellow" "$thm_yellow" "$thm_bg" "$label"
+      printf '#[fg=%s,bg=%s,bold] ● #[fg=%s,bg=%s,bold] %s' "$thm_bg" "$thm_yellow" "$label_fg" "$label_bg" "$label"
       ;;
     working)
-      printf '#[fg=%s,bg=%s,bold] ▶ #[fg=%s,bg=%s] %s' "$thm_bg" "$thm_blue" "$thm_blue" "$thm_bg" "$label"
+      printf '#[fg=%s,bg=%s,bold] ▶ #[fg=%s,bg=%s,bold] %s' "$thm_bg" "$thm_blue" "$label_fg" "$label_bg" "$label"
       ;;
     *)
       printf '%s' "$label"
