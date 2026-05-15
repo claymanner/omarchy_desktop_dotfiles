@@ -57,14 +57,30 @@ The fspbx-project memory at `~/.claude/projects/-home-cmannerow-Nextcloud-Docume
 
 ## Dotfiles + Claude config (cross-machine sync)
 
-Parts of `~/.claude/` are stowed from `~/omarchy_desktop_dotfiles` (a git repo at `claymanner/omarchy_desktop_dotfiles`) so Clayton's laptop + desktop stay in sync. Current stow packages:
+Clayton's configs are stowed from `~/omarchy_desktop_dotfiles` (a git repo at `claymanner/omarchy_desktop_dotfiles`) so his laptop + desktop stay in sync. Current stow packages:
 
 | Package | Stows into | Contents |
 |---|---|---|
-| `claude-config` | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | This file + global settings. |
+| `claude-config` | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | This file + global Claude settings. |
 | `claude-skills` | `~/.claude/skills/<name>/` | Reusable Claude skills (currently: `inbox-triage`). |
+| `bashrc` | `~/.bashrc` | Bash shell config. |
+| `zsh` | `~/.zshrc` | Zsh shell config. |
+| `tmux` | `~/.tmux.conf`, `~/.config/tmux/` | Tmux config + pane/window label scripts. |
+| `nvim` | `~/.config/nvim/` | Neovim config (lua-based). |
+| `ghostty` | `~/.config/ghostty/config` | Ghostty terminal config. |
+| `walker` | `~/.config/walker/config.toml` | Walker launcher config. |
+| `waybar` | `~/.config/waybar/` | Waybar config, style.css, and scripts (e.g. `weather.sh`). |
+| `bindings` | `~/.config/hypr/bindings.conf` | Hyprland keybindings. |
+| `hyprenv` | `~/.config/hypr/envs.conf` | Hyprland environment variables. |
+| `hypridle` | `~/.config/hypr/hypridle.conf` | Hyprland idle config. |
+| `hyprmonitors` | `~/.config/hypr/monitors.conf` | Hyprland monitor layout (per-machine — be careful). |
+| `xcompose` | `~/.XCompose` | X compose-key bindings. |
+| `scripts` | (not stowed into HOME — repo-local) | `bootstrap.sh`, `sync.sh` for setup/sync on new machines. |
+| `share` | (not stowed into HOME — repo-local) | `systemd/dotfiles-sync.{service,timer}` units. |
 
-**Tracked** = `~/.claude/CLAUDE.md`, `~/.claude/settings.json`, `~/.claude/skills/*`. Everything else under `~/.claude/` is per-machine state (`.credentials.json`, `history.jsonl`, `sessions/`, `tasks/`, `cache/`, `agent-state/`, `settings.local.json`, etc.) — never commit those.
+**Note on `hyprmonitors`:** monitor configs differ between desktop and laptop. Both machines currently share the same file, but if it diverges, this package may need to be split or made machine-local.
+
+**Per-machine state under `~/.claude/`** — never commit: `.credentials.json`, `history.jsonl`, `sessions/`, `tasks/`, `cache/`, `agent-state/`, `settings.local.json`, `projects/*/memory/*` (see "Where memories live" below).
 
 ### When you (Claude) should update this dotfiles repo
 
