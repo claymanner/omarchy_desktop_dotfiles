@@ -26,9 +26,9 @@ read -r code desc temp_c temp_f feels_c feels_f humidity wind_kmph wind_mph area
       .current_condition[0].windspeedMiles,
       (.nearest_area[0].areaName[0].value // ""),
       (.nearest_area[0].region[0].value // ""),
-      .current_condition[0].localObsDateTime,
-      .weather[0].astronomy[0].sunrise,
-      .weather[0].astronomy[0].sunset
+      (.current_condition[0].localObsDateTime // .current_condition[0].observation_time // ""),
+      (.weather[0].astronomy[0].sunrise // ""),
+      (.weather[0].astronomy[0].sunset // "")
     ] | map(gsub(" "; "_")) | join(" ")
   '
 )
