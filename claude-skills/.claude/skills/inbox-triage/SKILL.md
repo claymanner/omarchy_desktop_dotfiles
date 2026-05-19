@@ -130,6 +130,30 @@ SELECT count(*) FROM items i JOIN users u ON u.id=i.owner_user_id
 WHERE u.email='clayton.mannerow@e-wee.com' AND i.status='inbox';"
 ```
 
+## Retry items blocked by Conduit CRM auth (smartpbx/conduit#609)
+
+When that issue is fixed, run the retry helper to unblock the ~150
+items the bulk sweep left p3-flagged with their LLM scan preserved
+in the audit. It re-uses the cached scan (no new LLM cost), retries
+the Conduit save, and drops the pile item on success.
+
+```bash
+# Mint a fresh Conduit JWT first (see Setup step 3), then:
+. /tmp/conduit_jwt.env   # exports CONDUIT_JWT
+cd /home/cmannerow/Nextcloud/Documents/programming/pile/server
+USER_EMAIL='clayton.mannerow@e-wee.com' \
+  pnpm exec tsx ~/.claude/skills/inbox-triage/rerun-blocked.ts \
+    --limit=200             # dry-run; outputs stats
+USER_EMAIL='clayton.mannerow@e-wee.com' \
+  pnpm exec tsx ~/.claude/skills/inbox-triage/rerun-blocked.ts \
+    --limit=200 --apply     # actually save + drop
+```
+
+The script filters to pile items whose body contains the `conduit
+... 502 /zoho/crm/search` marker — i.e. the specific failure pattern
+from the bulk sweep. Items flagged for OTHER reasons (genuine
+attribution ambiguity, etc.) are left alone.
+
 ## Known failure modes + their fixes
 
 | Failure | Why | Fix |
