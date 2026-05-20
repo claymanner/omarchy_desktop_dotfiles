@@ -75,6 +75,15 @@ if ! command -v voxtype >/dev/null; then
     fi
 fi
 
+# Enable the smart-paste watcher unit shipped by the `voxtype` stow package.
+# Stow has already symlinked the .service into ~/.config/systemd/user/.
+if systemctl --user list-unit-files voxtype-paste-watcher.service >/dev/null 2>&1; then
+    log "Enabling voxtype-paste-watcher service..."
+    systemctl --user daemon-reload
+    systemctl --user enable --now voxtype-paste-watcher.service || \
+        warn "voxtype-paste-watcher failed to start — check 'systemctl --user status'"
+fi
+
 # 5. Auto-sync timer
 log "Installing dotfiles auto-sync systemd timer..."
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"

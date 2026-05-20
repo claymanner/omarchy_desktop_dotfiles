@@ -1,0 +1,18 @@
+[Unit]
+Description=Voxtype smart-paste watcher (window-class-aware paste keystroke)
+Documentation=https://omarchy.org/
+# After voxtype itself so the state dir exists by the time we start.
+After=voxtype.service graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/voxtype-paste-watcher
+Restart=on-failure
+RestartSec=2
+# Keep the watcher quiet — only failures land in the journal.
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Smart paste: pick the right paste keystroke for the focused window.
+# Terminals want shift+insert (ctrl+v is a literal control char to them).
+# Everything else — browsers, GTK/Qt apps, Electron — wants ctrl+v.
+#
+# Called by voxtype-paste-watcher when voxtype completes a transcription
+# (text is already on the clipboard).
+
+set -u
+
+# Match against the Hyprland window class. Add new terminal classes here
+# when you install one. Match is exact / case-insensitive; partial match
+# would be too aggressive (e.g. "ghostly-app" would falsely match).
+TERMINAL_CLASSES=(
+  "com.mitchellh.ghostty"
+  "kitty"
+  "Alacritty"
+  "alacritty"
+  "foot"
+  "wezterm"
+  "org.gnome.Console"
+  "org.kde.konsole"
+  "xterm"
+  "URxvt"
+)
+
+active_class=$(hyprctl activewindow -j 2>/dev/null | jq -r '.class // empty')
+if [[ -z "$active_class" ]]; then
+  # No focused window — bail silently. Better than typing into the wrong place.
+  exit 0
+fi
+
+is_terminal=0
+for cls in "${TERMINAL_CLASSES[@]}"; do
+  if [[ "${active_class,,}" == "${cls,,}" ]]; then
+    is_terminal=1
+    break
+  fi
+done
+
+# wtype key syntax: -M = modifier press, -P = key press, -p = key press+release,
+# -m = modifier release. We use the discrete press/release form so the modifier
+# is held across the key press the same way a human would do it.
+if (( is_terminal )); then
+  # shift+Insert — terminal paste (kitty/ghostty/alacritty/etc.)
+  wtype -M shift -P Insert -m shift
+else
+  # ctrl+v — universal GUI paste
+  wtype -M ctrl -P v -m ctrl
+fi

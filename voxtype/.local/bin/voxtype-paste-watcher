@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Watch voxtype's state file. On every transition transcribing → idle
+# (= transcription finished + clipboard populated), fire voxtype-smart-paste.
+#
+# Designed to be run as a systemd user service. Stays alive across
+# voxtype restarts: re-resolves the state file path if it disappears.
+
+set -u
+
+STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}/voxtype"
+STATE_FILE="$STATE_DIR/state"
+SMART_PASTE="${SMART_PASTE_CMD:-$HOME/.local/bin/voxtype-smart-paste}"
+
+prev_state="idle"
+
+read_state() {
+  cat "$STATE_FILE" 2>/dev/null
+}
+
+# Wait for the state file to exist. Voxtype may not have created it yet
+# when this watcher starts at session boot.
+while [[ ! -e "$STATE_FILE" ]]; do
+  sleep 1
+done
+
+# Inotify on the directory rather than the file: voxtype rewrites the
+# file via rename-on-replace, which invalidates a file-level watch.
+# MODIFY|CLOSE_WRITE|MOVED_TO catches both write-then-flush and atomic-rename.
+#
+# -m (monitor) is REQUIRED. Without it inotifywait exits after the first
+# event, which means each state transition (idle→recording, recording→
+# transcribing, transcribing→idle) is processed in a SEPARATE `while read`
+# subshell — and prev_state lives inside that subshell, so it always reads
+# as "idle" on the comparison and the paste branch never fires.
+while true; do
+  inotifywait -m -q -e modify,close_write,moved_to "$STATE_DIR" 2>/dev/null \
+    | while read -r _dir _event filename; do
+        [[ "$filename" == "state" ]] || continue
+        cur=$(read_state)
+        [[ -z "$cur" ]] && continue
+        if [[ "$prev_state" == "transcribing" && "$cur" == "idle" ]]; then
+          # Tiny breathing room — make sure voxtype's clipboard write has
+          # actually landed before we fire the paste keystroke. 30ms is
+          # well below human-perceptible latency and is plenty for wl-copy.
+          sleep 0.03
+          "$SMART_PASTE" || true
+        fi
+        prev_state="$cur"
+      done
+  # If inotifywait exited (state dir vanished after voxtype restart),
+  # wait for it to come back and resume.
+  while [[ ! -e "$STATE_FILE" ]]; do
+    sleep 1
+  done
+done
