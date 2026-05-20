@@ -38,13 +38,16 @@ for cls in "${TERMINAL_CLASSES[@]}"; do
   fi
 done
 
-# wtype key syntax: -M = modifier press, -P = key press, -p = key press+release,
-# -m = modifier release. We use the discrete press/release form so the modifier
-# is held across the key press the same way a human would do it.
+# wtype key syntax: -M = modifier press, -m = modifier release,
+# -P = key press (no release), -p = key release, -k = press+release atomic.
+# We hold the modifier across an atomic key press+release, the same way a
+# human would. Using -P here (press only) leaves the key held → kernel
+# autorepeat kicks in and you get "vvvvv" in the browser, or stuck Insert
+# in terminals.
 if (( is_terminal )); then
   # shift+Insert — terminal paste (kitty/ghostty/alacritty/etc.)
-  wtype -M shift -P Insert -m shift
+  wtype -M shift -k Insert -m shift
 else
   # ctrl+v — universal GUI paste
-  wtype -M ctrl -P v -m ctrl
+  wtype -M ctrl -k v -m ctrl
 fi
