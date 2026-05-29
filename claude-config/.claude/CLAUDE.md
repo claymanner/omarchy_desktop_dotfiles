@@ -65,7 +65,7 @@ Clayton's configs are stowed from `~/omarchy_desktop_dotfiles` (a git repo at `c
 | `claude-skills` | `~/.claude/skills/<name>/` | Reusable Claude skills (currently: `inbox-triage`). |
 | `bashrc` | `~/.bashrc` | Bash shell config. |
 | `zsh` | `~/.zshrc` | Zsh shell config. |
-| `tmux` | `~/.tmux.conf`, `~/.config/tmux/` | Tmux config + pane/window label scripts. |
+| `tmux` | `~/.config/tmux/` (tmux.conf, cheatsheet.txt, scripts) | Tmux config + cheatsheet + pane/window label scripts. Canonical config now lives at `~/.config/tmux/tmux.conf` (XDG), NOT `~/.tmux.conf` — tmux 3.6 + omarchy migrations target the XDG path. The old `~/.tmux.conf` symlink was dropped 2026-05-28. |
 | `nvim` | `~/.config/nvim/` | Neovim config (lua-based). |
 | `ghostty` | `~/.config/ghostty/config` | Ghostty terminal config. |
 | `walker` | `~/.config/walker/config.toml` | Walker launcher config. |
