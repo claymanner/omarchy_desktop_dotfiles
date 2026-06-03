@@ -16,6 +16,18 @@ thm_red="#ff757f"
 thm_yellow="#ffc777"
 thm_blue="#82aaff"
 
+# Single-instance guard. tmux fires this every status-interval for every
+# window; if a prior invocation is still running (e.g. a child ps wedged on a
+# stuck /proc entry under memory pressure) we must NOT pile up another one —
+# that feedback loop can fork-bomb the box. On contention, just emit the plain
+# window name (#W) for this cycle — never blank, no cache/tee fd to leak.
+lock_file="/tmp/tmux-agent-wl-${UID}-${window_id#@}.lock"
+exec 8>"$lock_file" 2>/dev/null || true
+if command -v flock >/dev/null 2>&1 && ! flock -n 8; then
+  printf '%s\n' "$fallback_name"
+  exit 0
+fi
+
 notify_once() {
   local state="$1" label="$2" now previous_state previous_notify
 
@@ -47,14 +59,16 @@ notify_once() {
     printf 'last_notify=%q\n' "$now"
   } >"$state_file"
 
+  # 8>&- closes the inherited flock fd so these backgrounded notifiers can't
+  # keep the single-instance lock held after this script exits.
   if command -v canberra-gtk-play >/dev/null 2>&1; then
-    canberra-gtk-play -i message-new-instant -d "tmux agent ${state}" >/dev/null 2>&1 &
+    canberra-gtk-play -i message-new-instant -d "tmux agent ${state}" >/dev/null 2>&1 8>&- &
   elif command -v paplay >/dev/null 2>&1 && [ -f /usr/share/sounds/freedesktop/stereo/message-new-instant.oga ]; then
-    paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga >/dev/null 2>&1 &
+    paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga >/dev/null 2>&1 8>&- &
   fi
 
   if command -v notify-send >/dev/null 2>&1; then
-    notify-send -a tmux "Agent ${state}" "$label" >/dev/null 2>&1 &
+    notify-send -a tmux "Agent ${state}" "$label" >/dev/null 2>&1 8>&- &
   fi
 }
 

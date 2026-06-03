@@ -23,10 +23,10 @@ shell_label() {
 app_from_process_tree() {
   local session_id tree
 
-  session_id="$(ps -o sid= -p "$pane_pid" 2>/dev/null | tr -d ' ')"
+  session_id="$(timeout 2 ps -o sid= -p "$pane_pid" 2>/dev/null | tr -d ' ')"
   [ -n "$session_id" ] || return 1
 
-  tree="$(ps -o comm=,args= --forest -g "$session_id" 2>/dev/null)"
+  tree="$(timeout 2 ps -o comm=,args= --forest -g "$session_id" 2>/dev/null)"
 
   case "$tree" in
     *"/bin/codex"*|*" codex "*)

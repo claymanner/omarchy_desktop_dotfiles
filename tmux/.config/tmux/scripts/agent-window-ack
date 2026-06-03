@@ -9,6 +9,11 @@ automatic_rename="${5:-1}"
 agent_label="$HOME/.config/tmux/scripts/agent-pane-label"
 state_file="/tmp/tmux-agent-window-${UID}-${window_id#@}"
 
+# Fired by select-window/pane + session-window-changed hooks. Guard it too so a
+# burst of navigation events (or a wedged child ps) can't pile up ps scans.
+exec 8>"/tmp/tmux-ack-${UID}-${window_id#@}.lock" 2>/dev/null || true
+command -v flock >/dev/null 2>&1 && { flock -n 8 || exit 0; }
+
 display_label() {
   local label="$1"
 
