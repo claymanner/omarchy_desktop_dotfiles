@@ -20,27 +20,10 @@ shell_label() {
   trim_path "$pane_path"
 }
 
-app_from_process_tree() {
-  local session_id tree
-
-  session_id="$(timeout 2 ps -o sid= -p "$pane_pid" 2>/dev/null | tr -d ' ')"
-  [ -n "$session_id" ] || return 1
-
-  tree="$(timeout 2 ps -o comm=,args= --forest -g "$session_id" 2>/dev/null)"
-
-  case "$tree" in
-    *"/bin/codex"*|*" codex "*)
-      printf 'codex:%s\n' "$(trim_path "$pane_path")"
-      return 0
-      ;;
-    *" claude "*|*"/claude"*|*" claude-code "*)
-      printf 'claude:%s\n' "$(trim_path "$pane_path")"
-      return 0
-      ;;
-  esac
-
-  return 1
-}
+# NOTE: ps-based process-tree detection was removed here. `ps --forest` wedges
+# in uninterruptible D state under memory pressure and accumulates without
+# bound. Agent detection now lives in agent-pane-label via pane_command +
+# pane content. Keep this script ps-free.
 
 case "$pane_command" in
   ssh)
@@ -53,7 +36,7 @@ case "$pane_command" in
     shell_label
     ;;
   node)
-    app_from_process_tree || printf '%s\n' "$pane_command"
+    shell_label
     ;;
   claude|claude-code)
     printf 'claude:%s\n' "$(basename "$pane_path")"

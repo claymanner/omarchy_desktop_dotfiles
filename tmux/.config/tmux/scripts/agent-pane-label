@@ -22,31 +22,17 @@ label() {
   "$pane_label" "$pane_pid" "$pane_command" "$pane_path" "$pane_title" "$label_mode"
 }
 
-agent_from_process_tree() {
-  local session_id tree
-
-  session_id="$(timeout 2 ps -o sid= -p "$pane_pid" 2>/dev/null | tr -d ' ')"
-  [ -n "$session_id" ] || return 1
-
-  tree="$(timeout 2 ps -o comm=,args= --forest -g "$session_id" 2>/dev/null)"
-
-  case "$tree" in
-    *"/bin/codex"*|*" codex "*)
-      printf 'codex\n'
-      return 0
-      ;;
-    *" claude "*|*"/claude"*|*" claude-code "*)
-      printf 'claude\n'
-      return 0
-      ;;
-  esac
-
-  return 1
-}
-
-agent="$(agent_from_process_tree)" || {
-  agent=""
-}
+# ps-free agent detection. The pane's own foreground command is the reliable
+# signal (claude/codex run as the foreground process); the pane-content
+# heuristics below catch the wrapped case. Process-tree detection via
+# `ps --forest` was REMOVED: under memory pressure ps wedges in uninterruptible
+# D state (timeout cannot kill it) and accumulates without bound, fork-bombing
+# the box. Never reintroduce ps here.
+case "$pane_command" in
+  claude|claude-code) agent="claude" ;;
+  codex)              agent="codex" ;;
+  *)                  agent="" ;;
+esac
 
 now="$(date +%s)"
 state="/tmp/tmux-agent-pane-${UID}-${pane_id#%}"
