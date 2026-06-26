@@ -4,7 +4,8 @@
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
-    "codex@openai-codex": true
+    "codex@openai-codex": true,
+    "andrej-karpathy-skills@karpathy-skills": true
   },
   "extraKnownMarketplaces": {
     "openai-codex": {
@@ -12,10 +13,17 @@
         "source": "github",
         "repo": "openai/codex-plugin-cc"
       }
+    },
+    "karpathy-skills": {
+      "source": {
+        "source": "github",
+        "repo": "forrestchang/andrej-karpathy-skills"
+      }
     }
   },
   "alwaysThinkingEnabled": true,
+  "effortLevel": "xhigh",
+  "autoUpdatesChannel": "latest",
   "skipDangerousModePermissionPrompt": true,
-  "agentPushNotifEnabled": true,
-  "effortLevel": "xhigh"
+  "agentPushNotifEnabled": true
 }
