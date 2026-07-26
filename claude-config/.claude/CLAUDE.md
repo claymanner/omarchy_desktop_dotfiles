@@ -51,6 +51,35 @@ This makes every future session — yours, mine, Jarvis's, Codex's — start wit
 
 When you're operating inside a specific repo, its own `CLAUDE.md` is authoritative for repo-specific rules (hard rules, code conventions, etc.). The vault is for cross-repo / cross-tool runbook context. Both apply.
 
+## Privileged commands — use `pkexec`, NEVER `sudo`
+
+`sudo` does not work from Claude Code on Clayton's machines. There's no tty, so it dies with
+`sudo: a terminal is required to read the password`. **Telling Clayton to run it himself as
+`! sudo ...` does not help — the `!` prefix runs in the same tty-less environment and fails
+identically.** Don't suggest it.
+
+Use `pkexec` instead. A polkit agent runs in the Hyprland session
+(`polkit-gnome-authentication-agent-1`), so `pkexec` pops a graphical password dialog on
+Clayton's monitor and the command runs as root. Verified working 2026-07-25.
+
+```bash
+pkexec /usr/bin/sed -i.bak-YYYYMMDD 's/foo|//' /etc/default/somefile
+pkexec /usr/bin/systemctl restart someservice
+```
+
+Rules that bite:
+- **Absolute path to the binary.** `pkexec sed` may fail; `pkexec /usr/bin/sed` works.
+- **`pkexec` does not run a shell.** No pipes, redirects, globs, or `&&` inside it. For those,
+  wrap explicitly: `pkexec /bin/bash -c 'cmd1 && cmd2 > /etc/thing'`.
+- **Quote args containing shell metachars** (`|`, `$`, `*`) so the calling bash doesn't eat them
+  before `pkexec` sees them.
+- **Set `dangerouslyDisableSandbox: true`** when writing outside the workspace (e.g. `/etc`).
+- **Use a generous timeout** (90s+) — Clayton has to physically see and click the dialog.
+- **Back up before editing system config** (`sed -i.bak-YYYYMMDD`, or `cp -a` via pkexec) and tell
+  him the backup path.
+- **Verify against the live process, not the file** — after restarting a service, check
+  `systemctl status <svc>` / the running cmdline to confirm the new args actually took effect.
+
 ## Per-project Jarvis memory still applies
 
 The fspbx-project memory at `~/.claude/projects/-home-cmannerow-Nextcloud-Documents-programming-fspbx/memory/` is still active and gets auto-loaded. Use it for fspbx-specific things; promote durable cross-tool facts to the vault.
