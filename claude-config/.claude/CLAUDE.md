@@ -105,6 +105,7 @@ Clayton's configs are stowed from `~/omarchy_desktop_dotfiles` (a git repo at `c
 | `hyprmonitors` | `~/.config/hypr/monitors.conf` | Hyprland monitor layout (per-machine — be careful). |
 | `xcompose` | `~/.XCompose` | X compose-key bindings. |
 | `voxtype` | `~/.local/bin/voxtype-{paste-watcher,smart-paste}`, `~/.config/systemd/user/voxtype-paste-watcher.service` | Smart-paste watcher: types ctrl+v (or shift+insert in terminals) after voxtype finishes transcribing. |
+| `applications` | `~/.local/share/applications/` | Custom `.desktop` menu entries (currently: `herdr.desktop`). After stowing, run `update-desktop-database ~/.local/share/applications`. |
 | `scripts` | (not stowed into HOME — repo-local) | `bootstrap.sh`, `sync.sh` for setup/sync on new machines. |
 | `share` | (not stowed into HOME — repo-local) | `systemd/dotfiles-sync.{service,timer}` units. |
 
