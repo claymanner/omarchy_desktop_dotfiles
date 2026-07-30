@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Herdr
+GenericName=Agent Multiplexer
+Comment=Terminal workspace manager for AI coding agents
+Exec=env -u TMUX -u TMUX_PANE -u TERM_PROGRAM -u TERM_PROGRAM_VERSION xdg-terminal-exec /home/cmannerow/.local/bin/herdr
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;
+StartupNotify=true
+Keywords=herdr;agent;multiplexer;terminal;claude;codex;
