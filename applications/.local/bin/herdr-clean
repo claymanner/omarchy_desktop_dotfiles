@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Launch herdr with a scrubbed environment.
+#
+# The herdr *server* freezes whatever environment it was born with and hands
+# that environment to every pane it ever spawns. So if the server is started
+# from inside tmux, or from inside a Claude Code session, every pane inherits
+# a false identity -- effectively forever, until the server is restarted.
+#
+# Observed damage:
+#   TMUX / TMUX_PANE        panes believe they are tmux panes; the tmux title
+#                           helpers in .bashrc then retitle panes in the *real*
+#                           tmux server, and the nested-tmux guard misfires.
+#   CLAUDE_CODE_CHILD_SESSION  Claude Code started in a pane thinks it is a
+#                           nested child session and silently disables
+#                           transcript saving (no --resume for that session).
+#
+# Always launch herdr through this wrapper.
+
+exec env \
+    -u TMUX \
+    -u TMUX_PANE \
+    -u TERM_PROGRAM \
+    -u TERM_PROGRAM_VERSION \
+    -u CLAUDECODE \
+    -u CLAUDE_CODE_CHILD_SESSION \
+    -u CLAUDE_CODE_SESSION_ID \
+    -u CLAUDE_CODE_BRIDGE_SESSION_ID \
+    -u CLAUDE_CODE_ENTRYPOINT \
+    -u CLAUDE_CODE_EXECPATH \
+    -u CLAUDE_PID \
+    -u CLAUDE_EFFORT \
+    -u CLAUDE_PLUGIN_DATA \
+    -u CLAUDE_CODE_SSE_PORT \
+    -u CLAUDE_CODE_FORCE_SESSION_PERSISTENCE \
+    "$HOME/.local/bin/herdr" "$@"

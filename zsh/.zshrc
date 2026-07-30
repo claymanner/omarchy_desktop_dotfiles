@@ -72,6 +72,12 @@ codex() {
   return "$codex_status"
 }
 
+# Route `herdr` through the env-scrubbing wrapper: the herdr server freezes its
+# launch environment into every pane it ever spawns. See ~/.local/bin/herdr-clean.
+if [ -x "$HOME/.local/bin/herdr-clean" ]; then
+    herdr() { "$HOME/.local/bin/herdr-clean" "$@"; }
+fi
+
 # Herdr is itself a multiplexer -- never autostart tmux inside its panes.
 if [ -z "$TMUX" ] && [ -z "$HERDR_ENV" ]; then tmux; fi
 
