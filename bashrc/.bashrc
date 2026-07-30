@@ -89,6 +89,9 @@ codex() {
 [ -n "$VSCODE_PID" ] && return
 [ "$EUID" -eq 0 ] && return
 
-if command -v tmux >/dev/null; then
+# Herdr is itself a multiplexer -- never autostart tmux inside its panes.
+if [ -z "$HERDR_ENV" ] && command -v tmux >/dev/null; then
     tmux attach -t main 2>/dev/null || tmux new -s main
 fi
+
+. "$HOME/.local/share/../bin/env"

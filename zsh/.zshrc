@@ -72,4 +72,7 @@ codex() {
   return "$codex_status"
 }
 
-if [ -z "$TMUX" ]; then tmux; fi
+# Herdr is itself a multiplexer -- never autostart tmux inside its panes.
+if [ -z "$TMUX" ] && [ -z "$HERDR_ENV" ]; then tmux; fi
+
+. "$HOME/.local/share/../bin/env"
