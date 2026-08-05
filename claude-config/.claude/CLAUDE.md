@@ -47,6 +47,35 @@ If you learn something durable about any app — new IP, new auth method, new fe
 
 This makes every future session — yours, mine, Jarvis's, Codex's — start with a much better picture of Clayton's infrastructure.
 
+## NEVER run heavy workloads on Clayton's workstation
+
+**This machine has 31GB and routinely sits at ~7GB free. Test suites, dependency installs
+and containers run here have crashed Clayton's open apps. Don't do it.** Repeated full-suite
+runs (especially several at once) are the specific thing that hurt — a single idle Postgres
+container is not the problem.
+
+Run work in this order of preference:
+
+1. **GitHub Actions** — anything test-shaped. Conduit has `.github/workflows/tests.yml`;
+   add the equivalent to any repo that lacks one rather than running suites locally.
+2. **The Proxmox dev box, CT 114 `dev`** — for what CI can't do: ad-hoc scripts against
+   live APIs, a dev Postgres/Redis, interactive iteration. See `Proxmox.md` in the vault
+   for the full runbook. Quick form:
+   ```bash
+   ssh proxmox 'pct exec 114 -- bash -lc "cd /root/repos/<repo> && …"'
+   ```
+   Repos there are **git clones under `/root/repos/`** — deliberately NOT the Nextcloud
+   copies, which is what kept destroying local `.venv`s.
+3. **The production droplets** (`ewee`, `conduit`) — only for things that must touch prod.
+
+On the workstation, keep to: editing files, git, `gh`, short read-only API calls. If
+something bigger is genuinely needed here, say so and get Clayton's go-ahead first.
+
+**Match the runtime to production, not to whatever the workstation has.** The workstation's
+venvs have drifted to Python 3.14 while Conduit's image is 3.12 and Riley's droplet is
+3.12.3. That skew hid a real production break (an undeclared `requests` dependency) from
+every local run. CT 114 and CI both pin 3.12 for this reason.
+
 ## Repo-local CLAUDE.md still wins
 
 When you're operating inside a specific repo, its own `CLAUDE.md` is authoritative for repo-specific rules (hard rules, code conventions, etc.). The vault is for cross-repo / cross-tool runbook context. Both apply.

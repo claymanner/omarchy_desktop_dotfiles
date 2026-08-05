@@ -1,29 +1,44 @@
 {
-  "permissions": {
-    "defaultMode": "bypassPermissions"
-  },
+  "agentPushNotifEnabled": true,
+  "alwaysThinkingEnabled": true,
+  "autoUpdatesChannel": "latest",
+  "effortLevel": "xhigh",
   "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
+    "andrej-karpathy-skills@karpathy-skills": true,
     "codex@openai-codex": true,
-    "andrej-karpathy-skills@karpathy-skills": true
+    "frontend-design@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
-    "openai-codex": {
-      "source": {
-        "source": "github",
-        "repo": "openai/codex-plugin-cc"
-      }
-    },
     "karpathy-skills": {
       "source": {
-        "source": "github",
-        "repo": "forrestchang/andrej-karpathy-skills"
+        "repo": "forrestchang/andrej-karpathy-skills",
+        "source": "github"
+      }
+    },
+    "openai-codex": {
+      "source": {
+        "repo": "openai/codex-plugin-cc",
+        "source": "github"
       }
     }
   },
-  "alwaysThinkingEnabled": true,
-  "effortLevel": "xhigh",
-  "autoUpdatesChannel": "latest",
-  "skipDangerousModePermissionPrompt": true,
-  "agentPushNotifEnabled": true
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bash '/home/cmannerow/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  },
+  "model": "opus[1m]",
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
 }
