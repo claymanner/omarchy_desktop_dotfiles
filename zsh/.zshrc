@@ -78,7 +78,8 @@ if [ -x "$HOME/.local/bin/herdr-clean" ]; then
     herdr() { "$HOME/.local/bin/herdr-clean" "$@"; }
 fi
 
-# Herdr is itself a multiplexer -- never autostart tmux inside its panes.
-if [ -z "$TMUX" ] && [ -z "$HERDR_ENV" ]; then tmux; fi
+# Herdr and Orca are themselves multiplexers -- never autostart tmux inside their panes.
+# See the matching guard in bashrc for why Orca must not be wrapped in tmux.
+if [ -z "$TMUX" ] && [ -z "$HERDR_ENV" ] && [ "$TERM_PROGRAM" != "Orca" ]; then tmux; fi
 
 . "$HOME/.local/share/../bin/env"

@@ -95,8 +95,14 @@ if [ -x "$HOME/.local/bin/herdr-clean" ]; then
     herdr() { "$HOME/.local/bin/herdr-clean" "$@"; }
 fi
 
-# Herdr is itself a multiplexer -- never autostart tmux inside its panes.
-if [ -z "$HERDR_ENV" ] && command -v tmux >/dev/null; then
+# Herdr and Orca are themselves multiplexers -- never autostart tmux inside their panes.
+# Orca also installs OSC 133 agent-lifecycle hooks into THIS shell (see
+# ~/.config/orca/shell-ready/bash/rcfile); letting tmux take over strands those hooks in
+# the outer shell and makes every Orca pane a client of the one shared `main` session,
+# so the panes all mirror each other. Guard on TERM_PROGRAM, which Orca sets to "Orca".
+# Note: this is a targeted skip, NOT an early `return` like VSCODE_PID above -- Orca panes
+# still need the rest of this file (PATH, mise/uv env) for the agents they run.
+if [ -z "$HERDR_ENV" ] && [ "$TERM_PROGRAM" != "Orca" ] && command -v tmux >/dev/null; then
     tmux attach -t main 2>/dev/null || tmux new -s main
 fi
 
