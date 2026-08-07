@@ -6,7 +6,7 @@ Clayton maintains a canonical app/service runbook at:
 
 **`/home/cmannerow/Documents/ObsidianVault/Obsidian Vault/30 Resources/Apps/`**
 
-This directory is synced via Nextcloud across every machine he uses (workstation, laptop, future machines). Every AI tool (you, Codex, [[Jarvis]], future tools) reads from and writes to it. It's the SINGLE SOURCE OF TRUTH for:
+This directory is synced by **Syncthing** (folder `blbxw-ddbrs`, **QNAP `10.10.2.1` is the hub**) across every machine he uses — workstation, Legion, yoga, phones/tablet, and the CT 114 `dev` Orca box, 9 devices as of 2026-08-07. It is **not** Nextcloud-synced and does not live under `~/Nextcloud`. Every peer is `sendreceive`, so **notes you write propagate to every device within seconds** — including from the dev box. Every AI tool (you, Codex, [[Jarvis]], future tools) reads from and writes to it. It's the SINGLE SOURCE OF TRUTH for:
 
 - What each app is (Pile, Aftercalls, Conduit, FsPBX, Jarvis, Proxmox, Home Assistant, UniFi, Telnyx, Zoho One, Nextcloud, Immich, GitHub, OpenAI, Vaultwarden, pbx-support-agent, …)
 - How to access it (URLs, ZeroTier IPs, SSH aliases, keys, ports, auth model)
