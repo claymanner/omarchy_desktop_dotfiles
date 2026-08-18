@@ -1,0 +1,92 @@
+#!/bin/bash
+# Hold Omarchy's stay-awake state while media is ACTIVELY playing, so the
+# screensaver/lock never kicks in mid-video or mid-meeting. Paused media is
+# not held, so the machine still idles normally.
+#
+# Signal: `omarchy-shell media status` -> .playing  (the same MPRIS data the
+# bar's media widget renders). Deliberately NOT audio-stream based: on this
+# box speech-dispatcher and the SmartPBX softphone both hold permanently
+# uncorked PipeWire streams, so "any active stream" would inhibit idle forever.
+#
+# Ownership: Omarchy gates idle on the presence of
+# ~/.local/state/omarchy/indicators/stay-awake (see omarchy-toggle-idle, and
+# the shell's plugins/services/idle/Service.qml, which watches that dir). We
+# write a token into it and only ever release a file still carrying our token,
+# mirroring what omarchy-update-stay-awake does. So we never clobber a manual
+# "Stay Awake" toggle, and if you turn it off by hand while media is playing we
+# back off until playback stops and restarts.
+
+set -uo pipefail
+
+STATE_DIR="$HOME/.local/state/omarchy/indicators"
+STATE_FILE="$STATE_DIR/stay-awake"
+TOKEN="omarchy-media-idle-inhibit"
+POLL="${OMARCHY_MEDIA_INHIBIT_POLL:-15}"
+
+held=0
+suppressed=0
+
+log() { printf '%s omarchy-media-idle-inhibit: %s\n' "$(date -Is)" "$*"; }
+
+is_playing() {
+  local json
+  # NOTE: do NOT pass -q here. In omarchy-shell, -q means "suppress output"
+  # (best-effort mode), so `omarchy-shell -q media status` prints nothing and
+  # this check would silently never fire.
+  json=$(omarchy-shell media status 2>/dev/null) || return 1
+  [[ -n $json ]] || return 1
+  grep -qE '"playing"[[:space:]]*:[[:space:]]*true' <<<"$json"
+}
+
+we_own_it() {
+  [[ -f $STATE_FILE ]] || return 1
+  [[ "$(cat "$STATE_FILE" 2>/dev/null)" == "$TOKEN" ]]
+}
+
+claim() {
+  mkdir -p "$STATE_DIR"
+  omarchy-toggle-idle stay-awake >/dev/null 2>&1 || return 1
+  printf '%s\n' "$TOKEN" >"$STATE_FILE"
+  log "media playing -> holding stay-awake"
+}
+
+release() {
+  omarchy-toggle-idle allow-idle >/dev/null 2>&1 || true
+  log "media stopped -> released stay-awake"
+}
+
+cleanup() {
+  if (( held )) && we_own_it; then release; fi
+  exit 0
+}
+trap cleanup TERM INT HUP
+
+log "started (poll=${POLL}s)"
+
+while :; do
+  if is_playing; then
+    # Our claim vanished or was replaced while media kept playing -> the user
+    # (or another owner) took over. Back off rather than fight the toggle.
+    if (( held )) && ! we_own_it; then
+      log "claim was cleared externally -> backing off until playback restarts"
+      held=0
+      suppressed=1
+    fi
+
+    if (( ! held && ! suppressed )); then
+      if [[ ! -f $STATE_FILE ]]; then
+        claim && held=1
+      fi
+      # If the file exists but isn't ours, stay-awake is already on manually.
+      # Nothing to do, and nothing to release later.
+    fi
+  else
+    suppressed=0
+    if (( held )); then
+      we_own_it && release
+      held=0
+    fi
+  fi
+
+  sleep "$POLL"
+done

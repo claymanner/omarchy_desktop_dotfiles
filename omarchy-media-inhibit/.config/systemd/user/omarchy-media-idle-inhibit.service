@@ -1,0 +1,16 @@
+[Unit]
+Description=Hold Omarchy stay-awake while media is playing
+Documentation=man:omarchy-toggle-idle(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/omarchy-media-idle-inhibit
+Restart=on-failure
+RestartSec=5
+# Never leave stay-awake pinned on if the unit dies hard.
+ExecStopPost=/bin/bash -c '[[ "$(cat "$HOME/.local/state/omarchy/indicators/stay-awake" 2>/dev/null)" == "omarchy-media-idle-inhibit" ]] && rm -f "$HOME/.local/state/omarchy/indicators/stay-awake" || true'
+
+[Install]
+WantedBy=graphical-session.target
