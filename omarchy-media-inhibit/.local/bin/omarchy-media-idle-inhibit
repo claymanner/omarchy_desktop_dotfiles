@@ -38,6 +38,33 @@ is_playing() {
   grep -qE '"playing"[[:space:]]*:[[:space:]]*true' <<<"$json"
 }
 
+# A browser holding an ACTIVE (uncorked) capture stream means a live call --
+# Teams/Meet/Zoom in a tab. This is the meeting signal, and it is needed because
+# Teams web registers NO MPRIS player at all (verified live 2026-08-18: the only
+# bus name during a Teams call was the browser's own, reporting the paused
+# YouTube tab). Matching on the BROWSER binary specifically is what makes this
+# safe here -- the SmartPBX softphone ("PipeWire ALSA [client]"), aftercalls and
+# its parec helpers all hold permanently uncorked capture streams, so a generic
+# "any capture stream" test would inhibit idle forever on this machine.
+BROWSER_RE="${OMARCHY_MEDIA_INHIBIT_BROWSER_RE:-^(zen-bin|firefox|chrome|chromium|brave|vivaldi|thorium)$}"
+
+in_call() {
+  pactl list source-outputs 2>/dev/null | awk -v re="$BROWSER_RE" '
+    /^Source Output/      { corked=""; binary="" }
+    /Corked:/             { corked=$2 }
+    /application\.process\.binary =/ {
+      binary=$3; gsub(/"/,"",binary)
+      n=split(binary,parts,"/"); binary=parts[n]
+    }
+    /^$/ { if (corked=="no" && binary ~ re) { found=1 } }
+    END  { exit !found }
+  '
+}
+
+should_hold() {
+  is_playing || in_call
+}
+
 we_own_it() {
   [[ -f $STATE_FILE ]] || return 1
   [[ "$(cat "$STATE_FILE" 2>/dev/null)" == "$TOKEN" ]]
@@ -47,12 +74,12 @@ claim() {
   mkdir -p "$STATE_DIR"
   omarchy-toggle-idle stay-awake >/dev/null 2>&1 || return 1
   printf '%s\n' "$TOKEN" >"$STATE_FILE"
-  log "media playing -> holding stay-awake"
+  log "media playing or call active -> holding stay-awake"
 }
 
 release() {
   omarchy-toggle-idle allow-idle >/dev/null 2>&1 || true
-  log "media stopped -> released stay-awake"
+  log "media stopped and no call -> released stay-awake"
 }
 
 cleanup() {
@@ -64,7 +91,7 @@ trap cleanup TERM INT HUP
 log "started (poll=${POLL}s)"
 
 while :; do
-  if is_playing; then
+  if should_hold; then
     # Our claim vanished or was replaced while media kept playing -> the user
     # (or another owner) took over. Back off rather than fight the toggle.
     if (( held )) && ! we_own_it; then
