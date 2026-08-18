@@ -38,31 +38,60 @@ is_playing() {
   grep -qE '"playing"[[:space:]]*:[[:space:]]*true' <<<"$json"
 }
 
-# A browser holding an ACTIVE (uncorked) capture stream means a live call --
-# Teams/Meet/Zoom in a tab. This is the meeting signal, and it is needed because
-# Teams web registers NO MPRIS player at all (verified live 2026-08-18: the only
-# bus name during a Teams call was the browser's own, reporting the paused
-# YouTube tab). Matching on the BROWSER binary specifically is what makes this
-# safe here -- the SmartPBX softphone ("PipeWire ALSA [client]"), aftercalls and
-# its parec helpers all hold permanently uncorked capture streams, so a generic
-# "any capture stream" test would inhibit idle forever on this machine.
-BROWSER_RE="${OMARCHY_MEDIA_INHIBIT_BROWSER_RE:-^(zen-bin|firefox|chrome|chromium|brave|vivaldi|thorium)$}"
+# An active (uncorked) PipeWire CAPTURE stream means somebody has your mic open,
+# i.e. you are in a call. This covers browser meetings (Teams, Zoho Meeting,
+# Meet, Zoom-web), Electron apps (Zoho Cliq), and the SmartPBX softphone alike --
+# it needs no per-app list, which is what a browser-binary allowlist got wrong:
+# it silently missed Cliq.
+#
+# Measured 2026-08-18, before/during/after a real Teams meeting: the softphone,
+# aftercalls and its parec helpers ALL released their capture streams when the
+# meeting ended, despite the apps staying up -- so none of them are permanent
+# and none need excluding. (speech-dispatcher only ever holds a PLAYBACK stream;
+# this function reads source-outputs only, so it never sees it.)
+#
+# If some app ever does pin a capture stream open with no call in progress, add
+# it here rather than reverting to an allowlist. The claim is logged with the
+# offending stream name, so the journal will name the culprit.
+#
+# Pipe-separated LITERAL substrings, not a regex -- app names like
+# "PipeWire ALSA [client]" contain brackets that awk would read as a character
+# class, which silently fails to match (caught in fixture testing).
+# Default ignores the SmartPBX softphone. Measured across a day: its capture
+# stream is neither permanent nor call-bound -- it disappeared entirely after a
+# meeting, then reappeared uncorked hours later with no call in progress. Left
+# in, it pins stay-awake indefinitely and the machine never sleeps.
+#
+# TRADE-OFF, know this: an actual softphone PHONE CALL therefore does NOT hold
+# idle open. Browser meetings (Teams, Zoho Meeting, Meet) and Cliq still do,
+# because they are separate streams. If softphone calls need covering, they need
+# a signal that distinguishes in-call from idle -- the PipeWire stream does not.
+CAPTURE_IGNORE="${OMARCHY_MEDIA_INHIBIT_IGNORE:-PipeWire ALSA [client]}"
 
+# Echoes the triggering stream description; exit 0 when a mic is live.
 in_call() {
-  pactl list source-outputs 2>/dev/null | awk -v re="$BROWSER_RE" '
-    /^Source Output/      { corked=""; binary="" }
-    /Corked:/             { corked=$2 }
-    /application\.process\.binary =/ {
-      binary=$3; gsub(/"/,"",binary)
-      n=split(binary,parts,"/"); binary=parts[n]
+  local hit
+  hit=$(pactl list source-outputs 2>/dev/null | awk -v ig="$CAPTURE_IGNORE" '
+    /^Source Output/ { id=$3; corked=""; app=""; bin="" }
+    /Corked:/                          { corked=$2 }
+    /application\.name =/              { app=$0; sub(/.*= /,"",app); gsub(/"/,"",app) }
+    /application\.process\.binary =/   { bin=$0; sub(/.*= /,"",bin); gsub(/"/,"",bin) }
+    /^$/ {
+      if (id != "" && corked == "no") {
+        label = app; if (label == "") label = bin; if (label == "") label = id
+        ignored = 0
+        if (ig != "") {
+          n = split(ig, pats, "|")
+          for (i = 1; i <= n; i++)
+            if (pats[i] != "" && index(label, pats[i]) > 0) { ignored = 1; break }
+        }
+        if (!ignored) { print label; exit }
+      }
+      id=""
     }
-    /^$/ { if (corked=="no" && binary ~ re) { found=1 } }
-    END  { exit !found }
-  '
-}
-
-should_hold() {
-  is_playing || in_call
+  ')
+  [[ -n $hit ]] || return 1
+  printf '%s\n' "$hit"
 }
 
 we_own_it() {
@@ -74,7 +103,7 @@ claim() {
   mkdir -p "$STATE_DIR"
   omarchy-toggle-idle stay-awake >/dev/null 2>&1 || return 1
   printf '%s\n' "$TOKEN" >"$STATE_FILE"
-  log "media playing or call active -> holding stay-awake"
+  log "holding stay-awake ($1)"
 }
 
 release() {
@@ -91,18 +120,26 @@ trap cleanup TERM INT HUP
 log "started (poll=${POLL}s)"
 
 while :; do
-  if should_hold; then
+  # Resolve the reason once per tick so the journal always names what held it.
+  hold_reason=""
+  if is_playing; then
+    hold_reason="media playing"
+  else
+    mic=$(in_call) && hold_reason="mic active: $mic"
+  fi
+
+  if [[ -n $hold_reason ]]; then
     # Our claim vanished or was replaced while media kept playing -> the user
     # (or another owner) took over. Back off rather than fight the toggle.
     if (( held )) && ! we_own_it; then
-      log "claim was cleared externally -> backing off until playback restarts"
+      log "claim was cleared externally -> backing off until media/call restarts"
       held=0
       suppressed=1
     fi
 
     if (( ! held && ! suppressed )); then
       if [[ ! -f $STATE_FILE ]]; then
-        claim && held=1
+        claim "$hold_reason" && held=1
       fi
       # If the file exists but isn't ours, stay-awake is already on manually.
       # Nothing to do, and nothing to release later.
