@@ -32,4 +32,9 @@ hl.monitor({ output = "DP-2",     mode = "3840x1080@144", position = "2040x1080"
 -- driver, and the 3080 caps at 4 displays. iGPU drives it at 240Hz; compositing stays on NVIDIA.
 -- Failsafe: high refresh on the iGPU output sometimes comes up at 60 on a fresh modeset, so
 -- re-assert 240Hz a few seconds after login. (Was an exec-once in autostart.conf pre-quattro.)
-o.exec_on_start("sleep 3 && hyprctl keyword monitor DP-4,1920x1080@240,3000x0,1")
+-- NB: `hyprctl keyword` is REJECTED under the Lua parser ("keyword can't work with
+-- non-legacy parsers. Use eval.") — it fails silently from a background shell, so the
+-- failsafe must go through `hyprctl eval` with an hl.monitor() call.
+o.exec_on_start(
+  "sleep 3 && hyprctl eval 'hl.monitor({ output = \"DP-4\", mode = \"1920x1080@240\", position = \"3000x0\", scale = 1 })'"
+)
