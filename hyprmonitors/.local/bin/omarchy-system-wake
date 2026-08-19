@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Wake displays, then force the iGPU output through a real modeset
+# omarchy:group=system
+# omarchy:hidden=true
+#
+# PATH shadow for the packaged omarchy-system-wake (~/.local/bin precedes
+# /usr/share/omarchy/bin). Runs the real one first, then repairs the one thing
+# it cannot.
+#
+# WHY: on this dual-GPU box DP-4 (ASUS ROG PG258Q) is the only output on the
+# Intel iGPU; everything else composites on the NVIDIA card. After a lock or
+# sleep it frequently comes back black, and Omarchy's wake path cannot fix it:
+#
+#   lock -> shell/plugins/lock/Service.qml runs `omarchy-brightness-display off`
+#           -> hl.dsp.dpms({action="disable"}) on every output
+#   input -> Hyprland itself re-enables DPMS (key_press_enables_dpms /
+#            mouse_move_enables_dpms in default/hypr/input.lua), so every output
+#            now REPORTS dpmsStatus:true
+#   wake  -> `omarchy-brightness-display on` early-exits on exactly that:
+#              hyprctl monitors -j | jq -e '... all(.dpmsStatus)' && exit 0
+#
+# So the panel that did not physically resume is never sent a modeset. Hyprland's
+# state says on, the hardware is dark, and nothing reconciles them. Confirmed
+# 2026-08-18/19: all outputs dpms=True, disabled=False, background+bar layers
+# present, one screen black.
+#
+# Nothing in software distinguishes the failed output from a healthy one, so this
+# cycles unconditionally. A full disable/enable is required -- a mode change is
+# NOT enough (and asking for an unsupported mode makes Hyprland fall back to
+# 640x480 and strand a stale framebuffer, which is worse). `disabled` is sticky:
+# re-enabling MUST pass disabled=false explicitly or the output stays off.
+
+set -uo pipefail
+
+PACKAGED=/usr/share/omarchy/bin/omarchy-system-wake
+[[ -x $PACKAGED ]] || PACKAGED=/usr/bin/omarchy-system-wake
+
+# Outputs to force-cycle, and the mode line to restore each to.
+# Format: <output>|<mode>|<position>|<scale>
+CYCLE_OUTPUTS=("${OMARCHY_WAKE_CYCLE_OUTPUTS:-DP-4|1920x1080@240|3000x0|1}")
+
+[[ -x $PACKAGED ]] && "$PACKAGED" "$@"
+
+command -v hyprctl >/dev/null 2>&1 || exit 0
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || exit 0
+
+for spec in "${CYCLE_OUTPUTS[@]}"; do
+  IFS='|' read -r out mode pos scale <<<"$spec"
+  [[ -n ${out:-} ]] || continue
+
+  # Only touch outputs Hyprland currently has connected, so this is a no-op on a
+  # machine (or a dock state) where the output is absent.
+  hyprctl monitors all -j 2>/dev/null | grep -q "\"name\": *\"$out\"" || continue
+
+  hyprctl eval "hl.monitor({ output = \"$out\", disabled = true })" >/dev/null 2>&1
+  sleep 1
+  hyprctl eval "hl.monitor({ output = \"$out\", disabled = false, mode = \"$mode\", position = \"$pos\", scale = $scale })" >/dev/null 2>&1
+done
+
+exit 0
