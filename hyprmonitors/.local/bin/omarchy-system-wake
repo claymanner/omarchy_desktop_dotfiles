@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# ============================================================================
+#  TEMPORARY WORKAROUND -- DELETE ME once aquamarine >= 0.15.0 is installed.
+#  See "HOW TO REMOVE" at the bottom. The script tells you when it is obsolete.
+# ============================================================================
+#
+# omarchy:summary=Wake displays, then repair DP-4 if the mgpu swapchain bug hit
+# omarchy:group=system
+# omarchy:hidden=true
+#
+# PATH shadow for the packaged omarchy-system-wake (~/.local/bin precedes
+# /usr/share/omarchy/bin). Runs the real one, then repairs DP-4 if needed.
+#
+# ---------------------------------------------------------------- THE BUG
+# DP-4 (ASUS ROG PG258Q) is the only output on the Intel iGPU (card0/i915);
+# everything else renders on the NVIDIA 3080 (card1). Its frames are therefore
+# cross-GPU copies, which require LINEAR buffers on the source side.
+#
+# aquamarine's CSwapchain::resize() omitted `.multigpu` when acquiring buffers,
+# while fullReconfigure() includes it. After a DPMS off/on the swapchain is
+# reallocated via resize(), the flag is lost, buffers come back non-linear, and
+# the iGPU cannot scan out NVIDIA-tiled memory. The panel gets signal and shows
+# solid black -- while hyprctl reports dpms=True, disabled=False, layers present.
+#
+# Fixed upstream 2026-08-15 by aquamarine 639ee4cd "swapchain: preserve multigpu
+# flag in resize() (#356)" -- 3 lines in src/allocator/Swapchain.cpp. Unreleased
+# as of 2026-08-19 (latest tag v0.14.0, Arch extra ships 0.14.0-2).
+#
+# ------------------------------------------------------------- THE REPAIR
+# resize() is taken whenever size AND format both match; only a format change
+# routes through fullReconfigure(). So flipping bitdepth 8 -> 10 -> 8 forces two
+# good reallocations and ends back at the native 8-bit format.
+#
+# This is why NOTHING ELSE WORKED -- all of these keep size and format identical
+# and therefore always take the broken resize() branch. Do not re-add them:
+#   * output disabled=true/false (real teardown, releasing crtc, still black)
+#   * hl.dsp.dpms({action="disable", monitor="DP-4"}) -- returns ok, no-op
+#   * hl.dsp.force_renderer_reload() -- returns ok, zero log activity
+#   * forcing content onto the workspace, omarchy-refresh-shell
+#   * a bare mode change is HARMFUL: an unsupported mode makes Hyprland fall back
+#     to 640x480 and strand a stale framebuffer in the corner of the raster
+#
+# ------------------------------------------------------------- WHY GUARDED
+# The wake path fires on every return from idle, including when only the
+# screensaver ran and no DPMS-off happened. Flipping unconditionally would cause
+# a needless format change on DP-4 every time. The log distinguishes the states
+# exactly, so we only act when actually broken:
+#     healthy: "GBM: Buffer is marked as multigpu, forcing linear" (+ BLOCK_LINEAR_2D)
+#     broken : "GBM: Using modifier-less allocation" (+ modifier 0xffffffffffffff)
+# Whichever appears LAST is the current state.
+#
+# Env overrides: OMARCHY_DP4_FIX=0 disables; OMARCHY_DP4_FIX=force repairs
+# unconditionally (for testing).
+#
+# ------------------------------------------------------------ HOW TO REMOVE
+#   cd ~/omarchy_desktop_dotfiles
+#   git rm hyprmonitors/.local/bin/omarchy-system-wake
+#   rm -f ~/.local/bin/omarchy-system-wake
+#   git commit -m "Drop DP-4 mgpu workaround: fixed in aquamarine >= 0.15.0" && git push
+# Nothing else references it; removing it restores stock behaviour immediately.
+
+set -uo pipefail
+
+PACKAGED=/usr/share/omarchy/bin/omarchy-system-wake
+[[ -x $PACKAGED ]] || PACKAGED=/usr/bin/omarchy-system-wake
+[[ -x $PACKAGED ]] && "$PACKAGED" "$@"
+
+OUT="${OMARCHY_DP4_FIX_OUTPUT:-DP-4}"
+MODE="${OMARCHY_DP4_FIX_MODE:-1920x1080@240}"
+POS="${OMARCHY_DP4_FIX_POSITION:-3000x0}"
+FIXED_IN="0.15.0"
+
+log() { printf 'omarchy-system-wake[dp4-fix]: %s\n' "$*" >&2; }
+
+[[ ${OMARCHY_DP4_FIX:-1} == 0 ]] && exit 0
+command -v hyprctl >/dev/null 2>&1 || exit 0
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || exit 0
+
+# Obsolescence self-check: shout once the packaged fix has landed.
+if command -v vercmp >/dev/null 2>&1; then
+  have=$(pacman -Q aquamarine 2>/dev/null | awk '{print $2}')
+  if [[ -n $have ]] && (( $(vercmp "$have" "$FIXED_IN") >= 0 )); then
+    log "aquamarine $have >= $FIXED_IN -- the mgpu resize() bug is fixed upstream."
+    log "This workaround is OBSOLETE. Remove it (see HOW TO REMOVE in this file)."
+    exit 0
+  fi
+fi
+
+hyprctl monitors all -j 2>/dev/null | grep -q "\"name\": *\"$OUT\"" || exit 0
+
+# Use the instance signature. Do NOT `ls -t /run/user/1000/hypr/*/` -- stale
+# instance dirs linger and you will read a previous session's log.
+LOG="/run/user/$(id -u)/hypr/$HYPRLAND_INSTANCE_SIGNATURE/hyprland.log"
+
+# Pure state test: whichever marker appears LAST in the log is the current state.
+# Kept separate from the force override so the post-repair check below actually
+# verifies the outcome instead of trivially re-reporting "broken" under force.
+is_broken() {
+  [[ -r $LOG ]] || return 1
+  local good bad
+  good=$(grep -n 'marked as multigpu, forcing linear' "$LOG" | tail -1 | cut -d: -f1)
+  bad=$(grep -n 'Using modifier-less allocation'      "$LOG" | tail -1 | cut -d: -f1)
+  (( ${bad:-0} > ${good:-0} ))
+}
+
+if [[ ${OMARCHY_DP4_FIX:-1} != force ]]; then
+  is_broken || exit 0
+fi
+
+log "$OUT swapchain lost its multigpu flag; forcing fullReconfigure via bitdepth flip"
+# 10 then back to 8: two format changes, two good reallocations, native depth at rest.
+hyprctl eval "hl.monitor({ output = \"$OUT\", mode = \"$MODE\", position = \"$POS\", scale = 1, bitdepth = 10 })" >/dev/null 2>&1
+sleep 2
+hyprctl eval "hl.monitor({ output = \"$OUT\", mode = \"$MODE\", position = \"$POS\", scale = 1, bitdepth = 8 })"  >/dev/null 2>&1
+sleep 2
+
+if is_broken; then log "$OUT still reports the broken allocation path -- repair FAILED"; else log "$OUT repaired"; fi
+exit 0
