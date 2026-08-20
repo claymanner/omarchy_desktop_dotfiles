@@ -3,13 +3,27 @@
 
 # All the default Omarchy aliases and functions
 # (don't mess with these directly, just overwrite them here!)
-source ~/.local/share/omarchy/default/bash/rc
+# /etc/omarchy.conf is written by omarchy-dev-link. When absent, force the
+# package default instead of preserving a stale inherited dev-link value before
+# we decide which rc file to source.
+if [[ -f /etc/omarchy.conf ]]; then
+  source /etc/omarchy.conf
+  export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+else
+  export OMARCHY_PATH=/usr/share/omarchy
+fi
+source "$OMARCHY_PATH/default/bash/rc"
 
 # Add your own exports, aliases, and functions here.
 #
 # Make an alias for invoking commands you use constantly
 # alias p='python'
-export PATH="$HOME/.local/bin:$PATH"
+# PATH order matters here: mise's shims dir must stay AHEAD of ~/.local/bin.
+# omarchy generates the wrappers in ~/.local/bin (omarchy-mise-install) so they
+# exec the bare tool name, and `mise x` substitutes the tool's install dir at the
+# position of the *shims* dir -- so with a wrapper dir in front, `claude` finds its
+# own wrapper again and re-execs forever. See Orca.md in the vault (2026-08-20).
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
 
 _tmux_ssh_target() {
     local arg skip_next=""
@@ -106,4 +120,7 @@ if [ -z "$HERDR_ENV" ] && [ "$TERM_PROGRAM" != "Orca" ] && command -v tmux >/dev
     tmux attach -t main 2>/dev/null || tmux new -s main
 fi
 
-. "$HOME/.local/share/../bin/env"
+# Deliberately NOT sourcing uv's "$HOME/.local/share/../bin/env" here: it only
+# prepends ~/.local/bin (spelled $HOME/.local/share/../bin), which is already in
+# PATH above -- and that spelling defeats both its own idempotence check and the
+# shims-first ordering, which is what made `claude` recurse in Orca panes.

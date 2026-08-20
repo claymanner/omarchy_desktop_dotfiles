@@ -82,4 +82,8 @@ fi
 # See the matching guard in bashrc for why Orca must not be wrapped in tmux.
 if [ -z "$TMUX" ] && [ -z "$HERDR_ENV" ] && [ "$TERM_PROGRAM" != "Orca" ]; then tmux; fi
 
-. "$HOME/.local/share/../bin/env"
+# Deliberately NOT sourcing uv's "$HOME/.local/share/../bin/env" here: it only
+# prepends ~/.local/bin (spelled $HOME/.local/share/../bin), which the session
+# environment already provides -- and that spelling jumps the queue in front of
+# mise's shims dir, which is what made `claude` re-exec its own omarchy wrapper
+# forever in Orca panes. See Orca.md in the vault (2026-08-20).
