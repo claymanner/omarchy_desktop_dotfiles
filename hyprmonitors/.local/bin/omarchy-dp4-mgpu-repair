@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# ============================================================================
+#  TEMPORARY WORKAROUND -- DELETE ME once aquamarine >= 0.15.0 is installed.
+#  The service self-reports and exits once obsolete. See HOW TO REMOVE below.
+# ============================================================================
+#
+# Repairs DP-4 after the aquamarine multigpu swapchain bug blanks it.
+#
+# ---------------------------------------------------------------- THE BUG
+# DP-4 is the only output on the Intel iGPU (card0/i915); everything renders on
+# the NVIDIA 3080 (card1), so its frames are cross-GPU copies needing LINEAR
+# source buffers. aquamarine's CSwapchain::resize() omitted `.multigpu` when
+# acquiring buffers while fullReconfigure() includes it. After a DPMS off/on the
+# swapchain is reallocated via resize(), the flag is lost, buffers come back
+# non-linear, and the iGPU cannot scan out NVIDIA-tiled memory: the panel has
+# signal and shows solid black while hyprctl reports dpms=True, disabled=False,
+# layers present. Fixed upstream 2026-08-15 by aquamarine 639ee4cd (#356);
+# unreleased as of 2026-08-21 (latest tag v0.14.0, Arch extra ships 0.14.0-2).
+#
+# Repair: resize() is taken when size AND format both match, so only a format
+# change routes through fullReconfigure(). bitdepth 8 -> 10 -> 8 forces two good
+# reallocations and ends at the native format. Everything preserving the format
+# provably does NOT work and must not be re-added: output disable/enable,
+# per-output DPMS, force_renderer_reload, moving windows, refresh-shell. A bare
+# mode change is HARMFUL -- an unsupported mode drops Hyprland to 640x480 and
+# strands a stale framebuffer in the corner of the raster.
+#
+# --------------------------------------------------- WHY A POLLER, NOT A HOOK
+# v1/v2 shadowed omarchy-system-wake. That hook is structurally WRONG here:
+# idle/Service.qml:76 sets `idledThisCycle = false` inside lockSystem() BEFORE
+# locking, and :106 only runs the wake `if (root.idledThisCycle)`. So the wake
+# never fires after a LOCK -- which is exactly when DPMS-off happens -- and does
+# fire on screensaver-only returns, when it did not. Precisely backwards; across
+# a full day the shadow was never once invoked at the right moment.
+#
+# So: poll instead, and act only when actually broken AND the session is
+# unlocked, so the GPU is never poked while the screen is off.
+#
+# --------------------------------------------------------------- SAFETY
+#   * Never acts while `omarchy-shell lock isLocked` is true.
+#   * Settle delay before touching the GPU.
+#   * Backoff after a failed repair, so a permanent failure cannot hammer the
+#     compositor in a loop.
+#   * Kill switch, no edit and no relog:  touch ~/.local/state/omarchy/dp4-fix.off
+#   * Every decision and both sides of every hyprctl call are logged, unbuffered,
+#     to the file below and (being a systemd service) to the journal. If this
+#     ever wedges the compositor, the last line written names where it got to.
+#         tail -f ~/.local/state/omarchy/dp4-fix.log
+#         journalctl --user -u omarchy-dp4-mgpu-repair -f
+#
+# ------------------------------------------------------------ HOW TO REMOVE
+#   systemctl --user disable --now omarchy-dp4-mgpu-repair.service
+#   cd ~/omarchy_desktop_dotfiles
+#   git rm hyprmonitors/.local/bin/omarchy-dp4-mgpu-repair \
+#          hyprmonitors/.config/systemd/user/omarchy-dp4-mgpu-repair.service
+#   rm -f ~/.local/bin/omarchy-dp4-mgpu-repair \
+#         ~/.config/systemd/user/omarchy-dp4-mgpu-repair.service
+#   systemctl --user daemon-reload
+#   git commit -m "Drop DP-4 mgpu workaround: fixed in aquamarine >= 0.15.0" && git push
+
+set -uo pipefail
+
+STATE_DIR="$HOME/.local/state/omarchy"
+LOGFILE="$STATE_DIR/dp4-fix.log"
+KILL_SWITCH="$STATE_DIR/dp4-fix.off"
+OUT="${OMARCHY_DP4_FIX_OUTPUT:-DP-4}"
+MODE="${OMARCHY_DP4_FIX_MODE:-1920x1080@240}"
+POS="${OMARCHY_DP4_FIX_POSITION:-3000x0}"
+POLL="${OMARCHY_DP4_FIX_POLL:-10}"
+SETTLE="${OMARCHY_DP4_FIX_SETTLE:-3}"
+BACKOFF="${OMARCHY_DP4_FIX_BACKOFF:-300}"
+FIXED_IN="0.15.0"
+
+mkdir -p "$STATE_DIR" 2>/dev/null
+say() {
+  local m; m="$(date -Is) $*"
+  printf '%s\n' "$m" >>"$LOGFILE" 2>/dev/null
+  printf '%s\n' "$m"          # systemd captures stdout into the journal
+}
+
+hypr_log() { printf '/run/user/%s/hypr/%s/hyprland.log' "$(id -u)" "${HYPRLAND_INSTANCE_SIGNATURE:-}"; }
+
+# Whichever marker appears LAST is the current state.
+is_broken() {
+  local L good bad; L=$(hypr_log)
+  [[ -r $L ]] || return 1
+  good=$(grep -n 'marked as multigpu, forcing linear' "$L" | tail -1 | cut -d: -f1)
+  bad=$(grep -n 'Using modifier-less allocation'      "$L" | tail -1 | cut -d: -f1)
+  (( ${bad:-0} > ${good:-0} ))
+}
+
+locked() { [[ "$(omarchy-shell lock isLocked 2>/dev/null)" == "true" ]]; }
+
+repair() {
+  say "settling ${SETTLE}s before touching the GPU"
+  sleep "$SETTLE"
+  say "step 1/2: bitdepth 10 -> BEGIN"
+  hyprctl eval "hl.monitor({ output = \"$OUT\", mode = \"$MODE\", position = \"$POS\", scale = 1, bitdepth = 10 })" >/dev/null 2>&1
+  say "step 1/2: bitdepth 10 -> END rc=$?"
+  sleep 2
+  say "step 2/2: bitdepth 8 -> BEGIN"
+  hyprctl eval "hl.monitor({ output = \"$OUT\", mode = \"$MODE\", position = \"$POS\", scale = 1, bitdepth = 8 })" >/dev/null 2>&1
+  say "step 2/2: bitdepth 8 -> END rc=$?"
+  sleep 2
+}
+
+say "service starting (poll=${POLL}s settle=${SETTLE}s backoff=${BACKOFF}s output=$OUT)"
+
+if command -v vercmp >/dev/null 2>&1; then
+  have=$(pacman -Q aquamarine 2>/dev/null | awk '{print $2}')
+  if [[ -n $have ]] && (( $(vercmp "$have" "$FIXED_IN") >= 0 )); then
+    say "aquamarine $have >= $FIXED_IN -- bug fixed upstream. This workaround is OBSOLETE; remove it."
+    exit 0
+  fi
+fi
+
+fail_until=0
+while :; do
+  sleep "$POLL"
+  [[ -e $KILL_SWITCH ]] && continue
+  [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || continue
+  command -v hyprctl >/dev/null 2>&1 || continue
+  (( $(date +%s) < fail_until )) && continue
+
+  is_broken || continue
+  if locked; then say "$OUT broken but session is LOCKED -- deferring until unlock"; continue; fi
+  hyprctl monitors all -j 2>/dev/null | grep -q "\"name\": *\"$OUT\"" || continue
+
+  say "$OUT lost its multigpu flag -- repairing"
+  repair
+  if is_broken; then
+    fail_until=$(( $(date +%s) + BACKOFF ))
+    say "RESULT: $OUT still broken -- repair FAILED, backing off ${BACKOFF}s"
+  else
+    say "RESULT: $OUT repaired"
+  fi
+done

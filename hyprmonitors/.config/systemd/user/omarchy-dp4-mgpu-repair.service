@@ -1,0 +1,13 @@
+[Unit]
+Description=Repair DP-4 after the aquamarine multigpu swapchain bug (TEMPORARY - remove at aquamarine 0.15.0)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/omarchy-dp4-mgpu-repair
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target
