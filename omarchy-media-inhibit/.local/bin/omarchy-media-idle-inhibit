@@ -68,6 +68,50 @@ is_playing() {
 # a signal that distinguishes in-call from idle -- the PipeWire stream does not.
 CAPTURE_IGNORE="${OMARCHY_MEDIA_INHIBIT_IGNORE:-PipeWire ALSA [client]}"
 
+# An uncorked PipeWire PLAYBACK stream means sound is actually coming out, which
+# is the ground truth MPRIS is not. Verified 2026-08-21: while a YouTube video was
+# playing, `omarchy-shell media status` reported "playing":false yet Zen held an
+# uncorked sink-input -- so the inhibitor released and the screensaver fired
+# mid-video. The browser exposes ONE MPRIS session for all tabs and it does not
+# reliably track which tab is actually making noise (see also the Zoho Mail chime
+# that briefly hijacked it). omarchy's own media service does not trust MPRIS
+# alone either -- media/Service.qml:81 playerHasPlaybackStream() correlates each
+# player against Pipewire nodes -- but that is not exposed over IPC, so we do the
+# equivalent here.
+#
+# Pipe-separated LITERAL substrings (not a regex -- app names contain brackets
+# that awk would read as a character class). speech-dispatcher holds a
+# permanently uncorked playback stream on this box and must stay excluded or idle
+# is pinned forever. The triggering stream is logged, so if something new ever
+# pins it the journal names the culprit.
+PLAYBACK_IGNORE="${OMARCHY_MEDIA_INHIBIT_PLAYBACK_IGNORE:-speech-dispatcher}"
+
+# Echoes the triggering stream description; exit 0 when sound is actually playing.
+is_audible() {
+  local hit
+  hit=$(pactl list sink-inputs 2>/dev/null | awk -v ig="$PLAYBACK_IGNORE" '
+    /^Sink Input/ { id=$3; corked=""; app=""; bin="" }
+    /Corked:/                          { corked=$2 }
+    /application\.name =/              { app=$0; sub(/.*= /,"",app); gsub(/"/,"",app) }
+    /application\.process\.binary =/   { bin=$0; sub(/.*= /,"",bin); gsub(/"/,"",bin) }
+    /^$/ {
+      if (id != "" && corked == "no") {
+        label = app; if (label == "") label = bin; if (label == "") label = id
+        ignored = 0
+        if (ig != "") {
+          n = split(ig, pats, "|")
+          for (i = 1; i <= n; i++)
+            if (pats[i] != "" && index(label, pats[i]) > 0) { ignored = 1; break }
+        }
+        if (!ignored) { print label; exit }
+      }
+      id=""
+    }
+  ')
+  [[ -n $hit ]] || return 1
+  printf '%s\n' "$hit"
+}
+
 # Echoes the triggering stream description; exit 0 when a mic is live.
 in_call() {
   local hit
@@ -124,8 +168,11 @@ while :; do
   hold_reason=""
   if is_playing; then
     hold_reason="media playing"
-  else
-    mic=$(in_call) && hold_reason="mic active: $mic"
+  elif snd=$(is_audible); then
+    # MPRIS is unreliable (see is_audible), so audible output counts on its own.
+    hold_reason="audio out: $snd"
+  elif mic=$(in_call); then
+    hold_reason="mic active: $mic"
   fi
 
   if [[ -n $hold_reason ]]; then
