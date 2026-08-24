@@ -6,7 +6,11 @@
 # 32-bit gaming libs, Steam/Proton, controller DKMS, OpenRGB/ddcutil, 3D-printing
 # slicers, media production). Install with:
 #
-#   yay -S --needed --noconfirm - < packages-core.txt
+#   grep -vE '^[[:space:]]*(#|$)' packages-core.txt | yay -S --needed --noconfirm -
+#
+# NOTE the grep: `yay -S - < packages-core.txt` feeds the comment lines in as
+# package names and dies with `database not found: # ...`. packages.txt has no
+# comments so it can be piped raw; this file cannot.
 #
 # See packages.txt for the older full-desktop snapshot.
 
