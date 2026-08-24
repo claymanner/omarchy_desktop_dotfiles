@@ -84,7 +84,10 @@ visual-studio-code-bin
 # remmina covers both jobs: VNC into the desktop's Hyprland session, and RDP
 # into the Windows VM the desktop hosts (Avaya). freerdp is its RDP backend.
 anydesk-bin
-dnslookup-bin
+# dnslookup is in the omarchy repo now; the older AUR `dnslookup-bin` provides
+# the same /usr/bin/dnslookup and the two CONFLICT. Machines still carrying
+# dnslookup-bin (the desktop) should swap to this one.
+dnslookup
 filezilla
 freerdp
 inetutils
