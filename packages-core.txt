@@ -76,7 +76,6 @@ usage
 cursor-bin
 fuse2
 openai-codex-desktop
-qqqa-bin
 tensaku
 visual-studio-code-bin
 
