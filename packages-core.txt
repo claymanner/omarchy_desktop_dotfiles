@@ -68,7 +68,9 @@ tree-sitter-cli
 usage
 
 # --- editors / AI tooling ---
+# fuse2 is required by AppImages (Orca ships as one) -- fuse3 alone is not enough.
 cursor-bin
+fuse2
 openai-codex-desktop
 qqqa-bin
 tensaku
