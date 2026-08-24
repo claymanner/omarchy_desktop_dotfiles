@@ -94,6 +94,10 @@ inetutils
 neatvnc
 openbsd-netcat
 remmina
+# tigervnc's vncviewer is the VNC client that matters: wayvnc on the desktop only
+# offers the RSA-AES-256 / RA2ne security types, which remmina's libvncclient
+# backend cannot negotiate. remmina stays for RDP (the Windows/Avaya VM).
+tigervnc
 scrcpy
 socat
 sshpass
