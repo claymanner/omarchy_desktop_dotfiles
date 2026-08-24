@@ -1,0 +1,136 @@
+# Core "work anywhere" package set — for the laptops (Legion, yoga).
+#
+# Additive only: shell/dev/remote-access/comms userspace. Deliberately EXCLUDES
+# anything the machine's own Omarchy install owns (kernel, bootloader, sddm,
+# pipewire, mesa/vulkan, microcode) and anything desktop-specific (NVIDIA stack,
+# 32-bit gaming libs, Steam/Proton, controller DKMS, OpenRGB/ddcutil, 3D-printing
+# slicers, media production). Install with:
+#
+#   yay -S --needed --noconfirm - < packages-core.txt
+#
+# See packages.txt for the older full-desktop snapshot.
+
+# --- shell + terminal ---
+alacritty
+bash-completion
+fzf
+ghostty
+starship
+tmux
+zoxide
+
+# --- core CLI ---
+bat
+btop
+dua-cli
+eza
+fastfetch
+fd
+gum
+inxi
+jq
+less
+man-db
+ncdu
+parallel-disk-usage
+plocate
+ripgrep
+tldr
+tree
+unzip
+wget
+xmlstarlet
+yazi
+yq
+
+# --- dev ---
+clang
+composer
+docker
+docker-buildx
+docker-compose
+git
+github-cli
+lazydocker
+lazygit
+llvm
+lua51
+luarocks
+mise
+neovim
+omarchy-nvim
+php
+python-gobject
+ruby
+rust
+stow
+tree-sitter-cli
+usage
+
+# --- editors / AI tooling ---
+cursor-bin
+openai-codex-desktop
+qqqa-bin
+tensaku
+visual-studio-code-bin
+
+# --- remote access + network (reaching the infra from the road) ---
+# remmina covers both jobs: VNC into the desktop's Hyprland session, and RDP
+# into the Windows VM the desktop hosts (Avaya). freerdp is its RDP backend.
+anydesk-bin
+dnslookup-bin
+filezilla
+freerdp
+inetutils
+neatvnc
+openbsd-netcat
+remmina
+scrcpy
+socat
+sshpass
+syncthing
+whois
+zerotier-one
+
+# --- work apps + comms ---
+bitwarden
+bitwarden-cli
+chromium
+evince
+libreoffice-fresh
+localsend
+nextcloud-client
+ninjarmm-ncplayer
+obsidian
+typora
+zen-browser-bin
+zoho-cliq
+
+# --- wayland desktop utilities ---
+copyq
+grim
+hyprpicker
+hyprshot
+imv
+mpv
+nwg-look
+slurp
+udiskie
+wl-clip-persist
+wl-clipboard
+wtype
+xdotool
+ydotool
+
+# --- dictation ---
+voxtype-bin
+
+# --- fonts ---
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+noto-fonts-extra
+ttf-cascadia-mono-nerd
+ttf-ia-writer
+ttf-jetbrains-mono-nerd-basic
+woff2-font-awesome
