@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Manage a virtual "remote screen" for VNC access to this multi-monitor desktop.
+#
+# wayvnc serves ONE output at a time, and this machine's real outputs suit a
+# laptop badly: a 3840x1080 ultrawide and a rotated 1080x1920 panel. So rather
+# than mirror a physical screen, create a headless output at the laptop's own
+# resolution and serve that. Windows and whole workspaces can be moved onto it
+# and back.
+#
+# Runs fine OVER SSH from the laptop: it resolves the graphical session itself
+# instead of trusting the caller's environment.
+#
+# NOTE: Hyprland INCREMENTS headless output names -- remove HEADLESS-1 and the
+# next one you create is HEADLESS-2. Never hardcode the name; always re-resolve.
+set -uo pipefail
+
+MODE=${REMOTE_SCREEN_MODE:-1920x1080@60}
+POS=${REMOTE_SCREEN_POS:-auto}
+
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    HYPRLAND_INSTANCE_SIGNATURE=$(hyprctl instances -j 2>/dev/null |
+        python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[0]["instance"]) if d else ""' 2>/dev/null)
+    export HYPRLAND_INSTANCE_SIGNATURE
+fi
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || { echo "no running Hyprland instance" >&2; exit 1; }
+
+_mon_json() { hyprctl monitors -j 2>/dev/null; }
+
+headless_name() {
+    _mon_json | python3 -c "
+import sys,json
+for m in json.load(sys.stdin):
+    if m['name'].startswith('HEADLESS'): print(m['name']); break" 2>/dev/null
+}
+first_physical() {
+    _mon_json | python3 -c "
+import sys,json
+for m in json.load(sys.stdin):
+    if not m['name'].startswith('HEADLESS'): print(m['name']); break" 2>/dev/null
+}
+right_edge() {
+    _mon_json | python3 -c "
+import sys,json
+ms=[m for m in json.load(sys.stdin) if not m['name'].startswith('HEADLESS')]
+print(max(m['x']+m['width'] for m in ms) if ms else 0)" 2>/dev/null
+}
+served() { wayvncctl output-list 2>/dev/null | awk '/^\*/{print $2}' | tr -d ':'; }
+
+case "${1:-status}" in
+  on)
+    name=$(headless_name)
+    if [ -z "$name" ]; then
+        hyprctl output create headless >/dev/null || exit 1
+        for _ in 1 2 3 4 5; do sleep 0.4; name=$(headless_name); [ -n "$name" ] && break; done
+    fi
+    [ -n "$name" ] || { echo "failed to create a headless output" >&2; exit 1; }
+    pos=$POS; [ "$pos" = auto ] && pos="$(right_edge)x0"
+    hyprctl eval "hl.monitor({ output = \"$name\", mode = \"$MODE\", position = \"$pos\", scale = 1 })" >/dev/null
+    wayvncctl output-set "$name" >/dev/null 2>&1
+    echo "remote screen ON  -> $name $MODE at $pos"
+    echo "vnc is serving: $(served)"
+    ;;
+  off)
+    phys=$(first_physical)
+    [ -n "$phys" ] && wayvncctl output-set "$phys" >/dev/null 2>&1
+    name=$(headless_name)
+    if [ -n "$name" ]; then hyprctl output remove "$name" >/dev/null 2>&1; fi
+    echo "remote screen OFF -> removed ${name:-none}, vnc serving: $(served)"
+    ;;
+  show)
+    target=${2:-next}
+    if [ "$target" = next ]; then wayvncctl output-cycle >/dev/null 2>&1
+    else wayvncctl output-set "$target" >/dev/null 2>&1; fi
+    echo "vnc now serving: $(served)"
+    ;;
+  pull)
+    [ $# -ge 2 ] || { echo "usage: omarchy-remote-screen pull <workspace>" >&2; exit 1; }
+    name=$(headless_name)
+    [ -n "$name" ] || { echo "no remote screen -- run 'omarchy-remote-screen on' first" >&2; exit 1; }
+    hyprctl dispatch moveworkspacetomonitor "$2" "$name" >/dev/null
+    echo "workspace $2 -> $name"
+    ;;
+  push)
+    [ $# -ge 3 ] || { echo "usage: omarchy-remote-screen push <workspace> <monitor>" >&2; exit 1; }
+    hyprctl dispatch moveworkspacetomonitor "$2" "$3" >/dev/null
+    echo "workspace $2 -> $3"
+    ;;
+  status)
+    echo "vnc is serving: $(served)"
+    echo "monitors:"
+    _mon_json | python3 -c "
+import sys,json
+for m in json.load(sys.stdin):
+    tag=' <- remote screen' if m['name'].startswith('HEADLESS') else ''
+    print(f\"  {m['name']:12s} {m['width']}x{m['height']} at {m['x']},{m['y']}  ws={m['activeWorkspace']['name']}{tag}\")"
+    ;;
+  *)
+    echo "usage: omarchy-remote-screen {on|off|show [OUTPUT|next]|pull <ws>|push <ws> <mon>|status}"
+    ;;
+esac
