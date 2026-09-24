@@ -90,6 +90,11 @@ dnslookup
 filezilla
 freerdp
 inetutils
+# jre8-openjdk: required by the ScreenConnect Host client (screenconnect-join).
+# Its jars target Java 8 and the bundled libwebp JNI decoder SIGSEGVs on modern
+# JVMs -- see ScreenConnect.md in the vault. Not the system default; the script
+# picks this JRE explicitly.
+jre8-openjdk
 neatvnc
 openbsd-netcat
 remmina
