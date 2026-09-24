@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Install / launch the ConnectWise Control (ScreenConnect) *Host* client on Arch.
+#
+# The stock ScreenConnect.ClientSetup.sh only knows rpm/dpkg/pkgutil, so it is a
+# no-op on Omarchy. But the Host client is plain Java (jars + .so), needs no root
+# and no package manager -- this unpacks it by hand and runs it.
+#
+# Usage:  screenconnect-join [path/to/ScreenConnect*.ClientSetup*.sh]
+#         (defaults to the newest such file in ~/Downloads)
+set -euo pipefail
+
+launch=1
+if [ "${1:-}" = "--no-launch" ]; then launch=0; shift; fi
+
+src="${1:-$(ls -t "$HOME"/Downloads/ScreenConnect*ClientSetup*.sh 2>/dev/null | head -1)}"
+[ -n "$src" ] && [ -s "$src" ] || { echo "no ScreenConnect installer found; pass one as \$1" >&2; exit 1; }
+echo "using installer: $src"
+
+# The .sh concatenates pkg/deb/rpm/app payloads between "<type>__commencement"
+# and "<type>__completion" markers; the Host client is the "app" one, which is
+# itself a self-extracting script wrapping a tar.gz.
+slice() { # slice <file> <marker-prefix> <out>
+  local f="$1" m="$2" o="$3" s e
+  s=$(grep -anF -m1 "${m}__commencement" "$f" | cut -d: -f1)
+  e=$(grep -anF -m1 "${m}__completion"   "$f" | cut -d: -f1)
+  [ -n "$s" ] && [ -n "$e" ] || { echo "marker ${m}__ not found in $f" >&2; return 1; }
+  tail -n+$((s+1)) "$f" | head -n $((e-s-1)) > "$o"
+  perl -i -0pe 's/\n\Z//' "$o"   # installer strips the trailing newline it added
+}
+
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+slice "$src" app "$tmp/app.sh"
+slice "$tmp/app.sh" tar.gz "$tmp/payload.tar.gz"
+tar -xzf "$tmp/payload.tar.gz" -C "$tmp"
+
+pkg=$(ls "$tmp" | grep '^connectwisecontrol-' | head -1)
+apps="$HOME/.local/share/applications"
+dest="$apps/$pkg"
+mkdir -p "$dest"
+cp -a "$tmp/$pkg"/. "$dest"/
+
+# ClientLaunchParameters.txt carries the signed session token; it expires, so a
+# freshly downloaded installer must overwrite the old one on every join.
+scheme="sc-${pkg#connectwisecontrol-}"
+cat > "$apps/$pkg.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+MimeType=x-scheme-handler/$scheme
+Name=ScreenConnect Client
+Exec=$dest/ClientLauncher.sh %u
+Icon=$dest/ApplicationIcon32.png
+EOF
+update-desktop-database "$apps" 2>/dev/null || true
+xdg-mime default "$pkg.desktop" "x-scheme-handler/$scheme" 2>/dev/null || true
+
+# The jars are compiled for Java 8 (class major 52) and the bundled libwebp JNI
+# bridge SIGSEGVs on OpenJDK 26 (jumps to a garbage address on entry to
+# CommonNative$libwebp.decode, mid screen-render). Pin to the oldest JRE we have.
+if [ -z "${SCREENCONNECT_JAVA:-}" ]; then
+  for v in 8 11 17 21; do
+    for b in "/usr/lib/jvm/java-$v-openjdk/jre/bin/java" "/usr/lib/jvm/java-$v-openjdk/bin/java"; do
+      [ -x "$b" ] && { SCREENCONNECT_JAVA="$b"; break 2; }
+    done
+  done
+fi
+if [ -n "${SCREENCONNECT_JAVA:-}" ]; then
+  PATH="$(dirname "$SCREENCONNECT_JAVA"):$PATH"; export PATH
+  echo "java: $SCREENCONNECT_JAVA ($("$SCREENCONNECT_JAVA" -version 2>&1 | head -1))"
+fi
+
+session=$(sed -n 's/.*[?&]i=\([^&]*\).*/\1/p' "$dest/ClientLaunchParameters.txt" | python3 -c 'import sys,urllib.parse;print(urllib.parse.unquote_plus(sys.stdin.read().strip()))')
+if [ "$launch" = 1 ]; then
+  echo "joining session: $session"
+  exec "$dest/ClientLauncher.sh"
+else
+  echo "installed (not launched); session would be: $session"
+fi
