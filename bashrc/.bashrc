@@ -18,6 +18,12 @@ source "$OMARCHY_PATH/default/bash/rc"
 #
 # Make an alias for invoking commands you use constantly
 # alias p='python'
+
+# Omarchy's quattro upgrade (2026-08-18) changed its stock `cx` alias from
+# bypassPermissions to `auto` mode; pin it back here so omarchy updates can't
+# clobber it again (this file is stowed from the dotfiles repo and is sourced
+# after omarchy's aliases, so this definition wins).
+alias cx='printf "\033[2J\033[3J\033[H" && claude --permission-mode bypassPermissions'
 # PATH order matters here: mise's shims dir must stay AHEAD of ~/.local/bin.
 # omarchy generates the wrappers in ~/.local/bin (omarchy-mise-install) so they
 # exec the bare tool name, and `mise x` substitutes the tool's install dir at the
