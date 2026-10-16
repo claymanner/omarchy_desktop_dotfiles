@@ -96,8 +96,8 @@ code is the cheap, fast part. Never size, phase or sequence work as though one p
 - **Plan builds as swarms.** Contracts and interfaces first (schemas, OpenAPI, shared types), so
   agents can then work on separate slices in parallel worktrees. Verify each slice adversarially, put
   test suites in CI (never the workstation), and make one integration pass.
-- **Two model budgets, use both.** Clayton has Claude Max (the $200 tier, "300 plan") and Codex Pro-level
-  capacity ("150"). Spread swarms across them: Claude workflows/subagents for design, review, and
+- **Two model budgets, use both.** Clayton has a Claude "300" plan and a Codex "150" plan (his words, 2026-10-16), so plenty of
+  capacity on both. Spread swarms across them: Claude workflows/subagents for design, review, and
   integration; `codex exec` (non-interactive, works headless on CT 114 and the workstation) for
   parallel implementation slices, second-opinion reviews, and image generation (Codex's built-in
   `image_gen` is better at UI mockups). Give each agent a self-contained brief and a contract; never
