@@ -142,3 +142,5 @@ path under `$HOME`:
 ### XCompose
 
 - `Caps + Space` shortcuts for name + email.
+
+- `codex-config`: `~/.codex/AGENTS.md`, global Codex instructions (mirrors the swarm-planning rule in claude-config).
