@@ -76,6 +76,29 @@ venvs have drifted to Python 3.14 while Conduit's image is 3.12 and Riley's drop
 3.12.3. That skew hid a real production break (an undeclared `requests` dependency) from
 every local run. CT 114 and CI both pin 3.12 for this reason.
 
+## Plan and estimate for agent-swarm speed, not for a solo human
+
+**Clayton has had to correct this many times, in every repo. Don't make him say it again.**
+The builder is you running parallel subagents and workflows, not Clayton typing code. Writing the
+code is the cheap, fast part. Never size, phase or sequence work as though one person codes it.
+
+- **No human dev-day or week estimates for building.** Don't write "≈12 weeks", "6-8 dev-days" or
+  "MVP first because it's smaller to build". Estimate in agent waves and wall-clock hours, and say
+  roughly how many parallel agents each wave uses.
+- **Don't shrink scope to save build effort.** Defer a feature only for a real reason:
+  - it depends on facts we don't have yet (a live API probe, a pilot's result, Clayton's decision);
+  - it's a risk gate (prod deploy, disclosure, money, customer-facing sends);
+  - the people who'll use it need time to adopt it.
+  Say which reason applies. "Too much work for one builder" is never one.
+- **Phases follow what actually limits the pace:** Clayton's review and approval bandwidth, live
+  verification against real systems, deploy and safety gates, data that only real use produces, and
+  people learning a new tool.
+- **Plan builds as swarms.** Contracts and interfaces first (schemas, OpenAPI, shared types), so
+  agents can then work on separate slices in parallel worktrees. Verify each slice adversarially, put
+  test suites in CI (never the workstation), and make one integration pass.
+- **Still state real costs** (tokens, review load, prod risk) and still put dangerous steps behind
+  Clayton's approval. Speed doesn't change the safety rules.
+
 ## Repo-local CLAUDE.md still wins
 
 When you're operating inside a specific repo, its own `CLAUDE.md` is authoritative for repo-specific rules (hard rules, code conventions, etc.). The vault is for cross-repo / cross-tool runbook context. Both apply.
