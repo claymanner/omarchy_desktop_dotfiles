@@ -34,3 +34,12 @@ code is the cheap, fast part. Never size, phase or sequence work as though one p
 - **Still state real costs** (tokens, review load, prod risk) and still put dangerous steps behind
   Clayton's approval. Speed doesn't change the safety rules.
 
+
+## Never lose what Clayton adds mid-turn
+
+When Clayton adds a feature, changes direction or makes a decision while you're working, record it **in the same turn,
+before more building**:
+- in the project's plan or scope doc (its decisions section), and in the build manifest if it changes a slice;
+- as a GitHub issue in the project's repo, labelled `from-clayton`, with his words quoted.
+
+Then adjust any running work it affects. "Make as many tickets as needed" means: file them, one per slice, decision and finding.
