@@ -76,6 +76,26 @@ venvs have drifted to Python 3.14 while Conduit's image is 3.12 and Riley's drop
 3.12.3. That skew hid a real production break (an undeclared `requests` dependency) from
 every local run. CT 114 and CI both pin 3.12 for this reason.
 
+### Clean up after yourself on CT 114 — its disk is shared with every production guest
+
+CT 114's rootfs is a thin volume on the Proxmox `pve/data` pool, **shared with Home Assistant,
+Nextcloud, Immich, Plex and the rest**. When that pool fills, *every* guest takes write errors and
+their filesystems abort. This happened 2026-10-03 and again 2026-10-29, when it took down 10
+containers. On 10-29, CT 114 alone held ~100 GB of abandoned leftovers:
+172 stale task worktrees (each with its own `node_modules`), a 45 GB Rust `target/`, 83 copies of a
+release build in `/root/orca/scratch`, and untagged Docker images from repeated e2e builds.
+
+- **When a task's branch is merged or abandoned, remove its worktree:** `git worktree remove <dir>`.
+  Don't leave `/root/work/<task>` dirs behind.
+- **Don't keep heavy build output around.** After a one-off Rust/Tauri build, run `cargo clean`
+  (or delete `target/`). After throwaway `docker build`s, run `docker image prune -f`.
+- **Scratch is not an archive.** Don't copy a full release build into a new scratch dir on every run.
+  Overwrite one dir, or delete the old ones.
+- Deleting files frees space *inside* the CT, but the pool only gets it back on a trim. A weekly
+  `pct-fstrim.timer` on the Proxmox host handles that (Sun 04:30). After a big cleanup, run
+  `ssh proxmox 'pct fstrim 114'` yourself.
+- Check before you add bulk: `ssh proxmox 'lvs pve/data -o data_percent'`. **Above ~90%, stop and tell Clayton.**
+
 ## Plan and estimate for agent-swarm speed, not for a solo human
 
 **Clayton has had to correct this many times, in every repo. Don't make him say it again.**
