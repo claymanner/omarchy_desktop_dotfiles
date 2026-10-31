@@ -91,8 +91,8 @@ release build in `/root/orca/scratch`, and untagged Docker images from repeated 
   (or delete `target/`). After throwaway `docker build`s, run `docker image prune -f`.
 - **Scratch is not an archive.** Don't copy a full release build into a new scratch dir on every run.
   Overwrite one dir, or delete the old ones.
-- Deleting files frees space *inside* the CT, but the pool only gets it back on a trim. A weekly
-  `pct-fstrim.timer` on the Proxmox host handles that (Sun 04:30). After a big cleanup, run
+- Deleting files frees space *inside* the CT, but the pool only gets it back on a trim. A daily
+  `pct-fstrim.timer` on the Proxmox host handles that (04:30). After a big cleanup, run
   `ssh proxmox 'pct fstrim 114'` yourself.
 - Check before you add bulk: `ssh proxmox 'lvs pve/data -o data_percent'`. **Above ~90%, stop and tell Clayton.**
 
