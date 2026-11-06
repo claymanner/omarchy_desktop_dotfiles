@@ -284,7 +284,7 @@ def cmd_sweep():
         if waiting:
             continue
         n = len(here)
-        note = (f"{n} ask{'s' if n != 1 else ''} from closed chats in HQ's inbox" if n else "asks answered")
+        note = (f"{n} ask{'s' if n != 1 else ''} older or from closed chats, in HQ's inbox" if n else "asks answered")
         run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", "in-progress", "--read",
             "--comment", note, "--json", check=False)
         log(f"swept {wt} out of Needs you: {note}")
