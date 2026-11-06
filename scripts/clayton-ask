@@ -256,6 +256,13 @@ def cmd_promote():
         log(f"promoted {i['url']} ({m.group(1)}#{m.group(2)} closed)")
 
 
+def has_answer(issue):
+    """An ask counts as answered once a comment records Clayton's answer ("Clayton: …" / "Clayton answered …")."""
+    bodies = run("gh", "issue", "view", str(issue["number"]), "-R", issue["repository"]["nameWithOwner"],
+                 "--json", "comments", "-q", ".comments[].body", check=False)
+    return bool(re.search(r"^\s*(\*\*)?Clayton( answered)?\b.{0,20}:", bodies or "", re.M))
+
+
 def cmd_sweep():
     """Reconcile the Needs you column every 10 min: a card belongs there exactly when a RUNNING chat in that workspace
     has an open ask filed after Clayton last replied in that workspace. Harvested asks (old chats, filed in bulk) and
@@ -264,7 +271,7 @@ def cmd_sweep():
     ps = json.loads(run("orca", "worktree", "ps", "--json", check=False) or "{}")
     cards = {w["worktreeId"]: w for w in (ps.get("result") or {}).get("worktrees", [])}
     found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
-                "--limit", "300", "--json", "title,body,createdAt", check=False)
+                "--limit", "300", "--json", "title,body,createdAt,number,repository", check=False)
     asks = json.loads(found or "[]")
     live = set()  # session ids of running Claude processes
     for f in glob.glob(os.path.expanduser("~/.claude/sessions/*.json")):
@@ -285,7 +292,8 @@ def cmd_sweep():
         marker = answered_marker(wt)
         replied = os.path.getmtime(marker) if os.path.exists(marker) else 0
         created = datetime.datetime.fromisoformat(i["createdAt"].replace("Z", "+00:00")).timestamp()
-        if "Harvested 2026-" not in b and m and m.group(1) in live and created > replied:
+        if "Harvested 2026-" not in b and m and m.group(1) in live and created > replied \
+                and not has_answer(i):
             waiting.setdefault(wt, []).append(i["title"])
         else:
             older[wt] = older.get(wt, 0) + 1
