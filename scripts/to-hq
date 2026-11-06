@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
-"""to-hq "<message>": hand a piece of Clayton's request to the HQ session, which files and dispatches it.
+"""to-hq "<message>": hand a piece of Clayton's request to HQ, which files and dispatches it.
 
-Use it when Clayton's (often dictated) message contains something outside your own task:
-new build work, another customer/ticket, another repo. Include his words and the context you have.
+Use it when Clayton's (often dictated) message contains something outside your own task: new build work, another
+customer/ticket, another repo. Include his words and the context you have.
+
+It never types into Clayton's HQ chat. The handoff is written to /root/hq/inbox/ and the "HQ intake" automation
+runs at once in its own short-lived tab to file the issue and start the work.
 """
-import json, os, subprocess, sys
+import datetime, json, os, secrets, subprocess, sys
 
-HQ_PATH = "/root/orca/workspaces/hq/HQ"
+INBOX = "/root/hq/inbox"
+INTAKE = "HQ intake"
 msg = " ".join(sys.argv[1:]).strip() or sys.stdin.read().strip()
 if not msg:
     sys.exit("usage: to-hq \"<what Clayton asked, his words, and the context you have>\"")
-here = os.environ.get("ORCA_WORKTREE_ID", os.getcwd()).split("::")[-1]
-terms = json.loads(subprocess.run(["orca", "terminal", "list", "--worktree", f"path:{HQ_PATH}", "--json"],
-                                  capture_output=True, text=True).stdout)["result"]["terminals"]
-hq = [t for t in terms if t.get("agentIdentity") == "claude"] or terms
-if not hq:
-    sys.exit("HQ has no live terminal; ask Clayton to open HQ (or file the issue yourself)")
-text = f"[handoff from {here}] {msg}"
-r = json.loads(subprocess.run(["orca", "terminal", "send", "--terminal", hq[0]["handle"], "--text", text,
-                               "--enter", "--json"], capture_output=True, text=True).stdout)
-print("handed to HQ" if r.get("ok") else f"failed: {r.get('error')}")
+os.makedirs(INBOX, exist_ok=True)
+stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+path = os.path.join(INBOX, f"{stamp}-{secrets.token_hex(3)}.md")
+src = os.environ.get("ORCA_WORKTREE_ID", os.getcwd())
+with open(path + ".tmp", "w") as f:
+    f.write(f"from: {src}\nsession: {os.environ.get('CLAUDE_SESSION_ID', '')}\nat: {stamp}\n\n{msg}\n")
+os.rename(path + ".tmp", path)  # atomic: intake never sees a half-written file
+autos = json.loads(subprocess.run(["orca", "automations", "list", "--json"], capture_output=True, text=True).stdout)
+ids = [a["id"] for a in autos["result"]["automations"] if a.get("name") == INTAKE]
+if ids:
+    subprocess.run(["orca", "automations", "run", ids[0], "--json"], capture_output=True)
+print(f"handed to HQ ({os.path.basename(path)})")

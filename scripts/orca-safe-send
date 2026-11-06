@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""orca-safe-send <terminal-handle> <text...>: type a message into an agent's chat ONLY when its input box is empty.
+
+Clayton may be mid-sentence in that chat; a plain `orca terminal send` would merge his half-typed text with ours and
+submit it. This reads the screen, waits (up to --wait seconds, default 600) while the input box has text, then sends.
+Exit 0 sent, 2 gave up (box still busy), 1 error.
+"""
+import json, subprocess, sys, time
+
+args = sys.argv[1:]
+wait = 600
+if args[:1] == ["--wait"]:
+    wait, args = int(args[1]), args[2:]
+if len(args) < 2:
+    sys.exit("usage: orca-safe-send [--wait SECONDS] <terminal-handle> <text...>")
+handle, text = args[0], " ".join(args[1:])
+
+
+def input_box_text():
+    out = subprocess.run(["orca", "terminal", "read", "--terminal", handle, "--screen", "--json"],
+                         capture_output=True, text=True).stdout
+    tail = json.loads(out)["result"]["terminal"]["tail"]
+    rules = [i for i, l in enumerate(tail) if l.strip() and set(l.strip()) <= {"─"}]
+    if len(rules) < 2:
+        return ""  # not a Claude input box (plain shell, Codex); nothing of his to clobber we can detect
+    box = tail[rules[-2] + 1: rules[-1]]
+    return "\n".join(l.replace("❯", "", 1) if i == 0 else l for i, l in enumerate(box)).strip()
+
+
+def box_quiet():
+    """Empty on two reads 3 s apart: the screen snapshot lags live typing, so one empty read isn't proof."""
+    if input_box_text():
+        return False
+    time.sleep(3)
+    return not input_box_text()
+
+
+deadline = time.time() + wait
+try:
+    while not box_quiet():
+        if time.time() > deadline:
+            print("gave up: input box still has unsent text")
+            sys.exit(2)
+        time.sleep(10)
+except Exception as e:
+    sys.exit(f"error reading terminal: {e}")
+r = json.loads(subprocess.run(["orca", "terminal", "send", "--terminal", handle, "--text", text, "--enter", "--json"],
+                              capture_output=True, text=True).stdout or "{}")
+print("sent" if r.get("ok") else f"failed: {r.get('error')}")
+sys.exit(0 if r.get("ok") else 1)
