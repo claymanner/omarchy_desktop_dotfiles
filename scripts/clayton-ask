@@ -14,7 +14,7 @@ Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title pr
 When run inside an Orca terminal, the card gets the unread dot and a "waiting on Clayton" comment.
 Design: vault `30 Resources/Apps/Orca Playbook.md`, Rule 6.
 """
-import argparse, difflib, hashlib, json, os, re, subprocess, sys, time, urllib.request
+import argparse, difflib, glob, hashlib, json, os, re, subprocess, sys, time, urllib.request
 
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
@@ -215,10 +215,12 @@ def cmd_answered():
         return
     found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
                 "--limit", "300", "--json", "number,title,repository,body", check=False)
-    mine = [i for i in json.loads(found or "[]") if f"`{wt}`" in (i.get("body") or "")]
+    sid = data.get("session_id") or "-"
+    mine = [i for i in json.loads(found or "[]") if f"session `{sid}`" in (i.get("body") or "")]
     if mine:
         lines = "\n".join(f"- {i['repository']['nameWithOwner']}#{i['number']}: {i['title']}" for i in mine)
-        context.append("Open asks for Clayton filed from this workspace:\n" + lines + "\nIf his message answers any of "
+        context.append("Open asks for Clayton that THIS session filed (other chats' asks are not yours; don't list "
+                       "them):\n" + lines + "\nIf his message answers any of "
                        "them, act on it and close each answered one: gh issue close <n> -R <repo> -c 'Clayton: <his "
                        "answer, short>'. Leave the rest open.")
     emit_context(context)
@@ -265,12 +267,22 @@ def cmd_sweep():
     found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
                 "--limit", "300", "--json", "body", check=False)
     bodies = [i.get("body") or "" for i in json.loads(found or "[]")]
+    live = set()  # session ids of running Claude processes
+    for f in glob.glob(os.path.expanduser("~/.claude/sessions/*.json")):
+        try:
+            sj = json.load(open(f))
+            if os.path.exists(f"/proc/{sj['pid']}"):
+                live.add(sj.get("sessionId"))
+        except Exception:
+            pass
     for w in cards:
         wt = w["worktreeId"]
-        n = sum(1 for b in bodies if f"`{wt}`" in b)
-        if w.get("liveTerminalCount") and n:
+        here = [b for b in bodies if f"`{wt}`" in b]
+        waiting = [b for b in here if any(f"session `{x}`" in b for x in live if x)]
+        if waiting:
             continue
-        note = (f"{n} ask{'s' if n != 1 else ''} in HQ's inbox (chat closed)" if n else "asks answered")
+        n = len(here)
+        note = (f"{n} ask{'s' if n != 1 else ''} from closed chats in HQ's inbox" if n else "asks answered")
         run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", "in-progress", "--read",
             "--comment", note, "--json", check=False)
         log(f"swept {wt} out of Needs you: {note}")
