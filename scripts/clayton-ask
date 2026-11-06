@@ -12,7 +12,7 @@ Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title pr
 When run inside an Orca terminal, the card gets the unread dot and a "waiting on Clayton" comment.
 Design: vault `30 Resources/Apps/Orca Playbook.md`, Rule 6.
 """
-import argparse, hashlib, json, os, re, subprocess, sys, urllib.request
+import argparse, difflib, hashlib, json, os, re, subprocess, sys, urllib.request
 
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
@@ -76,6 +76,31 @@ def ask_key(kind, title):
     return hashlib.sha1(f"{kind}|{norm}".encode()).hexdigest()[:12]
 
 
+REF_RE = re.compile(r"[A-Za-z][\w-]*#\d+|#\d+|C-\d{4,5}|\b\d{4,6}\b")
+STOP = set("the a an to of and or for on in is it be with this that at by from as our your you we".split())
+
+
+def refs(text):
+    return {r.lower().lstrip("#") if r.startswith("#") else r.lower() for r in REF_RE.findall(text)}
+
+
+def words(text):
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in STOP and len(w) > 2}
+
+
+def same_ask(kind, title, other_title):
+    """True when an open ask already covers this one. Agents re-list open asks every reply, reworded."""
+    m = re.match(r"\[(\w+)\]\s*(.*)", other_title)
+    if not m or m.group(1).capitalize() != kind:
+        return False
+    other = m.group(2)
+    if difflib.SequenceMatcher(None, title.lower(), other.lower()).ratio() >= 0.6:
+        return True
+    a, b = words(title), words(other)
+    overlap = len(a & b) / max(1, min(len(a), len(b)))
+    return bool(refs(title) & refs(other)) and overlap >= 0.4
+
+
 def ensure_label(repo):
     run("gh", "label", "create", LABEL, "-R", repo, "--color", "FBCA04",
         "--description", "Waiting on Clayton: decision, info or action", check=False)
@@ -93,9 +118,11 @@ def file_ask(kind, title, body, repo, context=""):
     key = ask_key(kind, title)
     marker = f"<!-- ask-key: {key} -->"
     open_asks = run("gh", "issue", "list", "-R", repo, "--label", LABEL, "--state", "open",
-                    "--limit", "500", "--json", "url,body", check=False)
+                    "--limit", "500", "--json", "url,body,title,number", check=False)
     for issue in json.loads(open_asks or "[]"):
-        if marker in (issue.get("body") or ""):
+        if marker in (issue.get("body") or "") or same_ask(kind, title, issue.get("title") or ""):
+            return issue["url"], False
+        if re.search(rf"(?<![\w-])#{issue['number']}\b", title):  # the line points at an open ask: not a new one
             return issue["url"], False
     ensure_label(repo)
     short = title if len(title) <= 90 else title[:87] + "..."
