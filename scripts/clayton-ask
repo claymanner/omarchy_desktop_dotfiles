@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""clayton-ask: file asks for Clayton (decisions, info, actions) into one GitHub queue.
+
+  clayton-ask file --kind Decision|Info|Action --title "..." [--body "..."] [--repo owner/repo]
+  clayton-ask hook            # Claude Code Stop hook: reads hook JSON on stdin
+  clayton-ask list            # open asks across every repo
+
+Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title prefixed
+[Decision]/[Info]/[Action]. Re-filing the same ask is a no-op (dedupe marker in the body).
+When run inside an Orca terminal, the card gets the unread dot and a "waiting on Clayton" comment.
+Design: vault `30 Resources/Apps/Orca Playbook.md`, Rule 6.
+"""
+import argparse, hashlib, json, os, re, subprocess, sys
+
+ASSIGNEE = "smartpbx"
+LABEL = "ask:clayton"
+FALLBACK_REPO = "smartpbx/patchbay"
+KINDS = ("Decision", "Info", "Action")
+BLOCK_RE = re.compile(r"^\s*\**NEEDS-CLAYTON\**\s*:?\s*$", re.M)
+LINE_RE = re.compile(r"^\s*[-*]\s*\[(Decision|Info|Action)\]\s*(.+?)\s*$", re.I)
+LOG = os.path.expanduser("~/.claude/clayton-ask.log")
+
+
+def log(msg):
+    with open(LOG, "a") as f:
+        f.write(msg.rstrip() + "\n")
+
+
+def run(*cmd, check=True):
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if check and r.returncode:
+        raise RuntimeError(f"{' '.join(cmd[:3])}: {r.stderr.strip()[:300]}")
+    return r.stdout.strip()
+
+
+def repo_for(cwd):
+    try:
+        url = run("git", "-C", cwd, "remote", "get-url", "origin")
+    except Exception:
+        return FALLBACK_REPO
+    m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else FALLBACK_REPO
+
+
+def ask_key(kind, title):
+    norm = re.sub(r"\W+", " ", title.lower()).strip()
+    return hashlib.sha1(f"{kind}|{norm}".encode()).hexdigest()[:12]
+
+
+def ensure_label(repo):
+    run("gh", "label", "create", LABEL, "-R", repo, "--color", "FBCA04",
+        "--description", "Waiting on Clayton: decision, info or action", check=False)
+
+
+def file_ask(kind, title, body, repo, context=""):
+    kind = kind.capitalize()
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {KINDS}")
+    title = title.strip().rstrip(".")
+    key = ask_key(kind, title)
+    marker = f"<!-- ask-key: {key} -->"
+    open_asks = run("gh", "issue", "list", "-R", repo, "--label", LABEL, "--state", "open",
+                    "--limit", "500", "--json", "url,body", check=False)
+    for issue in json.loads(open_asks or "[]"):
+        if marker in (issue.get("body") or ""):
+            return issue["url"], False
+    ensure_label(repo)
+    short = title if len(title) <= 90 else title[:87] + "..."
+    text = f"{body.strip()}\n\n{context.strip()}\n\n{marker}".strip()
+    url = run("gh", "issue", "create", "-R", repo, "--title", f"[{kind}] {short}",
+              "--label", LABEL, "--assignee", ASSIGNEE, "--body", text)
+    return url, True
+
+
+def orca_flag(title):
+    wt = os.environ.get("ORCA_WORKTREE_ID")
+    if not wt:
+        return
+    run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--unread",
+        "--comment", f"⏸ waiting on Clayton: {title[:80]}", "--json", check=False)
+
+
+def last_assistant_text(transcript):
+    text = ""
+    with open(transcript, errors="ignore") as f:
+        for line in f:
+            try:
+                j = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if j.get("type") != "assistant":
+                continue
+            parts = [c.get("text", "") for c in j.get("message", {}).get("content", [])
+                     if isinstance(c, dict) and c.get("type") == "text"]
+            if parts:
+                text = "\n".join(parts)
+    return text
+
+
+def parse_block(text):
+    m = None
+    for m in BLOCK_RE.finditer(text):
+        pass  # use the last block in the message
+    if not m:
+        return []
+    asks = []
+    for line in text[m.end():].splitlines():
+        if not line.strip():
+            if asks:
+                break
+            continue
+        lm = LINE_RE.match(line)
+        if lm:
+            asks.append((lm.group(1).capitalize(), lm.group(2)))
+        elif asks and line.startswith(("  ", "\t")):
+            k, t = asks[-1]
+            asks[-1] = (k, t + " " + line.strip())
+        else:
+            break
+    return asks
+
+
+def cmd_hook():
+    data = json.load(sys.stdin)
+    if data.get("stop_hook_active"):
+        return
+    text = data.get("last_assistant_message") or ""
+    if not text and data.get("transcript_path"):
+        text = last_assistant_text(data["transcript_path"])
+    asks = parse_block(text)
+    if not asks:
+        return
+    if os.fork():  # never hold up the agent: file in the background
+        return
+    os.setsid()
+    cwd = data.get("cwd") or os.getcwd()
+    repo = repo_for(cwd)
+    ctx = (f"---\nAsked by an agent session `{data.get('session_id')}` in `{cwd}`"
+           + (f" (Orca workspace `{os.environ['ORCA_WORKTREE_ID']}`)" if os.environ.get("ORCA_WORKTREE_ID") else "")
+           + f".\n\n<details><summary>Agent's message</summary>\n\n{text[-3000:]}\n\n</details>")
+    for kind, line in asks:
+        title = re.split(r"\s+[—-]\s+blocks\b", line)[0]
+        try:
+            url, new = file_ask(kind, title, f"**{kind}:** {line}", repo, ctx)
+            log(f"{'filed' if new else 'exists'} {url} {kind}: {title}")
+        except Exception as e:
+            log(f"FAILED {repo} {kind}: {title}: {e}")
+    orca_flag(asks[0][1])
+
+
+def main():
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest="cmd", required=True)
+    f = sub.add_parser("file")
+    f.add_argument("--kind", required=True)
+    f.add_argument("--title", required=True)
+    f.add_argument("--body", default="")
+    f.add_argument("--repo")
+    sub.add_parser("hook")
+    sub.add_parser("list")
+    a = p.parse_args()
+    if a.cmd == "hook":
+        try:
+            cmd_hook()
+        except Exception as e:
+            log(f"hook error: {e}")
+        return
+    if a.cmd == "list":
+        print(run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
+                  "--sort", "created", "--order", "asc", "--limit", "200"))
+        return
+    url, new = file_ask(a.kind, a.title, a.body or a.title, a.repo or repo_for(os.getcwd()))
+    print(("filed " if new else "already open ") + url)
+    orca_flag(a.title)
+
+
+if __name__ == "__main__":
+    main()

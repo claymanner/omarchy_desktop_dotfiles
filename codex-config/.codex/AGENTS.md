@@ -43,3 +43,25 @@ before more building**:
 - as a GitHub issue in the project's repo, labelled `from-clayton`, with his words quoted.
 
 Then adjust any running work it affects. "Make as many tickets as needed" means: file them, one per slice, decision and finding.
+
+## Asks for Clayton go in the queue, never only in prose
+
+Clayton misses questions and to-dos that are buried in a reply, especially once more messages follow
+(his words, 2026-11-05: "it gets buried in the replies and then missed completely"). So **every**
+decision, piece of info or action you need from him goes in a closing block of your reply, one line each:
+
+```
+NEEDS-CLAYTON
+- [Decision] Riley deploy window: tonight 22:00 or Sat AM? (rec: tonight) — blocks #1575
+- [Info] Which Bell circuit ID is the Toronto Bail copper?
+- [Action] Put the Ship24 API key in Vaultwarden as `patchbay/ship24`
+```
+
+- On CT 114 `dev`, a Stop hook (`/usr/local/bin/clayton-ask hook`) files each line as a GitHub issue in
+  the current repo, labelled `ask:clayton` and assigned to him, deduped. It also puts the unread dot on
+  the Orca card. Anywhere else (Codex, workstation), or for an ask outside a reply, run
+  `clayton-ask file --kind Decision|Info|Action --title "..." [--body "..."] [--repo owner/repo]` yourself.
+- Make each line self-contained: what you need, the options with your recommendation, and what it blocks.
+- Don't keep asking the same thing in prose. Once an ask is filed, refer to its issue.
+- When Clayton answers (in chat or on the issue), act on it and close the issue with a comment.
+- The full queue: `clayton-ask list`. Design: vault `Orca Playbook.md` → Rule 6.
