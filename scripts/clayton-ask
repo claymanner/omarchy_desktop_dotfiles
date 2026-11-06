@@ -6,6 +6,7 @@
   clayton-ask answered        # UserPromptSubmit hook: Clayton replied, card leaves Needs you
   clayton-ask list            # open asks across every repo
   clayton-ask promote         # (timer) surface parked "after X" asks whose PR/issue has closed
+  clayton-ask sweep           # (timer) take cards out of Needs you with no live agent or no open asks
   clayton-ask push --title T --message M [--url U]   # phone notification via Home Assistant
 
 Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title prefixed
@@ -252,6 +253,29 @@ def cmd_promote():
         log(f"promoted {i['url']} ({m.group(1)}#{m.group(2)} closed)")
 
 
+def cmd_sweep():
+    """Needs you is for live agents waiting on Clayton. Move cards out that have no live agent or no open asks left.
+
+    Asks from closed chats stay in HQ's inbox; answering them there resumes the chat.
+    """
+    ps = json.loads(run("orca", "worktree", "ps", "--json", check=False) or "{}")
+    cards = [w for w in (ps.get("result") or {}).get("worktrees", []) if w.get("workspaceStatus") == NEEDS_YOU]
+    if not cards:
+        return
+    found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
+                "--limit", "300", "--json", "body", check=False)
+    bodies = [i.get("body") or "" for i in json.loads(found or "[]")]
+    for w in cards:
+        wt = w["worktreeId"]
+        n = sum(1 for b in bodies if f"`{wt}`" in b)
+        if w.get("liveTerminalCount") and n:
+            continue
+        note = (f"{n} ask{'s' if n != 1 else ''} in HQ's inbox (chat closed)" if n else "asks answered")
+        run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", "in-progress", "--read",
+            "--comment", note, "--json", check=False)
+        log(f"swept {wt} out of Needs you: {note}")
+
+
 def last_assistant_text(transcript):
     text = ""
     with open(transcript, errors="ignore") as f:
@@ -342,6 +366,7 @@ def main():
     sub.add_parser("hook")
     sub.add_parser("answered")
     sub.add_parser("promote")
+    sub.add_parser("sweep")
     sub.add_parser("list")
     pp = sub.add_parser("push")
     pp.add_argument("--title", required=True)
@@ -356,6 +381,9 @@ def main():
         return
     if a.cmd == "promote":
         cmd_promote()
+        return
+    if a.cmd == "sweep":
+        cmd_sweep()
         return
     if a.cmd == "answered":
         try:
