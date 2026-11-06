@@ -6,7 +6,7 @@
   clayton-ask answered        # UserPromptSubmit hook: Clayton replied, card leaves Needs you
   clayton-ask list            # open asks across every repo
   clayton-ask promote         # (timer) surface parked "after X" asks whose PR/issue has closed
-  clayton-ask sweep           # (timer) take cards out of Needs you with no live agent or no open asks
+  clayton-ask sweep           # (timer) reconcile Needs you: in iff a running chat has an ask newer than his last reply
   clayton-ask push --title T --message M [--url U]   # phone notification via Home Assistant
 
 Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title prefixed
@@ -14,7 +14,7 @@ Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title pr
 When run inside an Orca terminal, the card gets the unread dot and a "waiting on Clayton" comment.
 Design: vault `30 Resources/Apps/Orca Playbook.md`, Rule 6.
 """
-import argparse, difflib, glob, hashlib, json, os, re, subprocess, sys, time, urllib.request
+import argparse, datetime, difflib, glob, hashlib, json, os, re, subprocess, sys, time, urllib.request
 
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
@@ -257,17 +257,15 @@ def cmd_promote():
 
 
 def cmd_sweep():
-    """Needs you is for live agents waiting on Clayton. Move cards out that have no live agent or no open asks left.
-
-    Asks from closed chats stay in HQ's inbox; answering them there resumes the chat.
+    """Reconcile the Needs you column every 10 min: a card belongs there exactly when a RUNNING chat in that workspace
+    has an open ask filed after Clayton last replied in that workspace. Harvested asks (old chats, filed in bulk) and
+    asks from closed chats live in HQ's inbox only.
     """
     ps = json.loads(run("orca", "worktree", "ps", "--json", check=False) or "{}")
-    cards = [w for w in (ps.get("result") or {}).get("worktrees", []) if w.get("workspaceStatus") == NEEDS_YOU]
-    if not cards:
-        return
+    cards = {w["worktreeId"]: w for w in (ps.get("result") or {}).get("worktrees", [])}
     found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
-                "--limit", "300", "--json", "body", check=False)
-    bodies = [i.get("body") or "" for i in json.loads(found or "[]")]
+                "--limit", "300", "--json", "title,body,createdAt", check=False)
+    asks = json.loads(found or "[]")
     live = set()  # session ids of running Claude processes
     for f in glob.glob(os.path.expanduser("~/.claude/sessions/*.json")):
         try:
@@ -276,18 +274,38 @@ def cmd_sweep():
                 live.add(sj.get("sessionId"))
         except Exception:
             pass
-    for w in cards:
-        wt = w["worktreeId"]
-        here = [b for b in bodies if f"`{wt}`" in b]
-        # harvested asks (from old chats, filed in bulk) live in HQ's inbox only; they never hold a card here
-        waiting = [b for b in here if "Harvested 2026-" not in b and any(f"session `{x}`" in b for x in live if x)]
-        if waiting:
+    waiting, older = {}, {}
+    for i in asks:
+        b = i.get("body") or ""
+        w = re.search(r"Orca workspace `([^`]+)`", b)
+        if not w or w.group(1) not in cards:
             continue
-        n = len(here)
-        note = (f"{n} ask{'s' if n != 1 else ''} older or from closed chats, in HQ's inbox" if n else "asks answered")
-        run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", "in-progress", "--read",
-            "--comment", note, "--json", check=False)
-        log(f"swept {wt} out of Needs you: {note}")
+        wt = w.group(1)
+        m = re.search(r"session `([0-9a-f-]{36})`", b)
+        marker = answered_marker(wt)
+        replied = os.path.getmtime(marker) if os.path.exists(marker) else 0
+        created = datetime.datetime.fromisoformat(i["createdAt"].replace("Z", "+00:00")).timestamp()
+        if "Harvested 2026-" not in b and m and m.group(1) in live and created > replied:
+            waiting.setdefault(wt, []).append(i["title"])
+        else:
+            older[wt] = older.get(wt, 0) + 1
+    for wt, w in cards.items():
+        status = w.get("workspaceStatus")
+        if wt.endswith("/hq/HQ") or status == "completed":
+            continue
+        if wt in waiting and status != NEEDS_YOU:
+            t = waiting[wt]
+            first = re.sub(r"^\[\w+\]\s*", "", t[0])[:70]
+            more = f" (+{len(t) - 1} more)" if len(t) > 1 else ""
+            run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", NEEDS_YOU, "--unread",
+                "--comment", f"⏸ waiting on Clayton: {first}{more}", "--json", check=False)
+            log(f"reconcile: {wt} into Needs you ({len(t)} unanswered)")
+        elif wt not in waiting and status == NEEDS_YOU:
+            n = older.get(wt, 0)
+            note = f"{n} older ask{'s' if n != 1 else ''} in HQ's inbox" if n else "asks answered"
+            run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", "in-progress", "--read",
+                "--comment", note, "--json", check=False)
+            log(f"reconcile: {wt} out of Needs you ({note})")
 
 
 def last_assistant_text(transcript):
