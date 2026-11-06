@@ -24,6 +24,8 @@ KINDS = ("Decision", "Info", "Action")
 BLOCK_RE = re.compile(r"^\s*\**NEEDS-CLAYTON\**\s*:?\s*$", re.M)
 LINE_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*\[(Decision|Info|Action)(?:\s*,\s*after\s+([\w./-]*#\d+))?\]\s*(.+?)\s*$", re.I)
 LOG = os.path.expanduser("~/.claude/clayton-ask.log")
+RULES_VERSION = os.path.expanduser("~/.claude/rules-version")  # bump this file's content when the global rules change
+SEEN_DIR = "/tmp/clayton-rules-seen"
 PUSH_ENV = os.path.expanduser("~/.config/clayton-ask/env")  # HA_URL, HA_TOKEN, HA_NOTIFY (mode 0600)
 
 
@@ -165,29 +167,48 @@ def orca_flag(title):
     run(*args, check=False)
 
 
+def emit_context(parts):
+    if parts:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                                 "additionalContext": "\n\n".join(parts)}}))
+        sys.stdout.flush()
+
+
 def cmd_answered():
     """UserPromptSubmit hook: Clayton replied in this workspace.
 
     If the card is in Needs you: remind the agent which of its asks are still open (so it closes the ones he just
     answered, even in sessions started before that rule existed), and move the card back to In progress.
     """
-    sys.stdin.read()
+    data = json.loads(sys.stdin.read() or "{}")
+    context = []
+    # Once per session per rules version: tell already-running agents the global rules changed.
+    if os.path.exists(RULES_VERSION):
+        ver = open(RULES_VERSION).read().strip()
+        seen = os.path.join(SEEN_DIR, f"{data.get('session_id', 'x')}-{ver}")
+        if not os.path.exists(seen):
+            os.makedirs(SEEN_DIR, exist_ok=True)
+            open(seen, "w").close()
+            context.append(f"Clayton's global rules changed ({ver}). Before answering, re-read ~/.claude/CLAUDE.md "
+                           "(at least the 'Clayton talks in whole thoughts' and 'Asks for Clayton' sections) and follow "
+                           "the current version from now on.")
     wt = os.environ.get("ORCA_WORKTREE_ID")
     if not wt or wt.endswith("/hq/HQ"):
+        emit_context(context)
         return
     show = json.loads(run("orca", "worktree", "show", "--worktree", f"id:{wt}", "--json", check=False) or "{}")
     if ((show.get("result") or {}).get("worktree") or {}).get("workspaceStatus") != NEEDS_YOU:
+        emit_context(context)
         return
     found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
                 "--limit", "300", "--json", "number,title,repository,body", check=False)
     mine = [i for i in json.loads(found or "[]") if f"`{wt}`" in (i.get("body") or "")]
     if mine:
         lines = "\n".join(f"- {i['repository']['nameWithOwner']}#{i['number']}: {i['title']}" for i in mine)
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext":
-            "Open asks for Clayton filed from this workspace:\n" + lines + "\nIf his message answers any of them, act "
-            "on it and close each answered one: gh issue close <n> -R <repo> -c 'Clayton: <his answer, short>'. "
-            "Leave the rest open."}}))
-        sys.stdout.flush()
+        context.append("Open asks for Clayton filed from this workspace:\n" + lines + "\nIf his message answers any of "
+                       "them, act on it and close each answered one: gh issue close <n> -R <repo> -c 'Clayton: <his "
+                       "answer, short>'. Leave the rest open.")
+    emit_context(context)
     if os.fork():
         return
     os.setsid()
