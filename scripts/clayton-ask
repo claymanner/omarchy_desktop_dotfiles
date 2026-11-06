@@ -5,6 +5,7 @@
   clayton-ask hook            # Claude Code Stop hook: reads hook JSON on stdin
   clayton-ask answered        # UserPromptSubmit hook: Clayton replied, card leaves Needs you
   clayton-ask list            # open asks across every repo
+  clayton-ask promote         # (timer) surface parked "after X" asks whose PR/issue has closed
   clayton-ask push --title T --message M [--url U]   # phone notification via Home Assistant
 
 Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title prefixed
@@ -16,11 +17,12 @@ import argparse, difflib, hashlib, json, os, re, subprocess, sys, urllib.request
 
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
+LATER = "ask:later"  # parked until the PR/issue it waits for closes; `clayton-ask promote` surfaces it
 FALLBACK_REPO = "smartpbx/patchbay"
 NEEDS_YOU = "status-5"  # Orca board column "Needs you" (id assigned by the desktop when the column was added)
 KINDS = ("Decision", "Info", "Action")
 BLOCK_RE = re.compile(r"^\s*\**NEEDS-CLAYTON\**\s*:?\s*$", re.M)
-LINE_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*\[(Decision|Info|Action)\]\s*(.+?)\s*$", re.I)
+LINE_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*\[(Decision|Info|Action)(?:\s*,\s*after\s+([\w./-]*#\d+))?\]\s*(.+?)\s*$", re.I)
 LOG = os.path.expanduser("~/.claude/clayton-ask.log")
 PUSH_ENV = os.path.expanduser("~/.config/clayton-ask/env")  # HA_URL, HA_TOKEN, HA_NOTIFY (mode 0600)
 
@@ -72,6 +74,16 @@ def push(title, message, url=None):
         return False
 
 
+def full_ref(ref, repo):
+    """'#12' -> repo#12, 'patchbay#12' -> smartpbx/patchbay#12, 'org/repo#12' unchanged."""
+    name, num = ref.split("#", 1)
+    if not name:
+        return f"{repo}#{num}"
+    if "/" not in name:
+        return f"{repo.split('/')[0]}/{name}#{num}"
+    return ref
+
+
 def ask_key(kind, title):
     norm = re.sub(r"\W+", " ", title.lower()).strip()
     return hashlib.sha1(f"{kind}|{norm}".encode()).hexdigest()[:12]
@@ -107,7 +119,7 @@ def ensure_label(repo):
         "--description", "Waiting on Clayton: decision, info or action", check=False)
 
 
-def file_ask(kind, title, body, repo, context=""):
+def file_ask(kind, title, body, repo, context="", after=None):
     kind = kind.capitalize()
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
@@ -118,18 +130,27 @@ def file_ask(kind, title, body, repo, context=""):
     title = title.strip().rstrip(".")
     key = ask_key(kind, title)
     marker = f"<!-- ask-key: {key} -->"
-    open_asks = run("gh", "issue", "list", "-R", repo, "--label", LABEL, "--state", "open",
-                    "--limit", "500", "--json", "url,body,title,number", check=False)
-    for issue in json.loads(open_asks or "[]"):
+    open_asks = [i for lab in (LABEL, LATER) for i in json.loads(
+        run("gh", "issue", "list", "-R", repo, "--label", lab, "--state", "open",
+            "--limit", "500", "--json", "url,body,title,number", check=False) or "[]")]
+    for issue in open_asks:
         if marker in (issue.get("body") or "") or same_ask(kind, title, issue.get("title") or ""):
             return issue["url"], False
         if re.search(rf"(?<![\w-])#{issue['number']}\b", title):  # the line points at an open ask: not a new one
             return issue["url"], False
     ensure_label(repo)
+    label = LABEL
+    if after:
+        ref = full_ref(after, repo)
+        marker += f"\n<!-- waits-for: {ref} -->"
+        context = f"**Parked until {ref} closes.** It reaches Clayton (push + Needs you) then, not before.\n\n{context}"
+        run("gh", "label", "create", LATER, "-R", repo, "--color", "C5DEF5",
+            "--description", "Ask for Clayton, parked until the PR/issue it waits for closes", check=False)
+        label = LATER
     short = title if len(title) <= 90 else title[:87] + "..."
     text = f"{body.strip()}\n\n{context.strip()}\n\n{marker}".strip()
     url = run("gh", "issue", "create", "-R", repo, "--title", f"[{kind}] {short}",
-              "--label", LABEL, "--assignee", ASSIGNEE, "--body", text)
+              "--label", label, "--assignee", ASSIGNEE, "--body", text)
     return url, True
 
 
@@ -175,6 +196,29 @@ def cmd_answered():
     log(f"answered: {wt} out of Needs you ({len(mine)} open asks reminded)")
 
 
+def cmd_promote():
+    """Surface parked asks whose PR/issue has closed: relabel, push, move the card to Needs you."""
+    found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LATER, "--state", "open",
+                "--limit", "200", "--json", "number,title,repository,body,url", check=False)
+    for i in json.loads(found or "[]"):
+        m = re.search(r"<!-- waits-for: ([\w.-]+/[\w.-]+)#(\d+) -->", i.get("body") or "")
+        if not m:
+            continue
+        state = run("gh", "issue", "view", m.group(2), "-R", m.group(1), "--json", "state", "-q", ".state", check=False)
+        if state not in ("CLOSED", "MERGED"):
+            continue
+        repo = i["repository"]["nameWithOwner"]
+        run("gh", "issue", "edit", str(i["number"]), "-R", repo, "--add-label", LABEL, "--remove-label", LATER, check=False)
+        run("gh", "issue", "comment", str(i["number"]), "-R", repo, "--body",
+            f"{m.group(1)}#{m.group(2)} is now closed, so this is ready for Clayton.", check=False)
+        push("Ready for you now", f"{i['title'][:110]}", i["url"])
+        w = re.search(r"Orca workspace `([^`]+)`", i.get("body") or "")
+        if w and not w.group(1).endswith("/hq/HQ"):
+            run("orca", "worktree", "set", "--worktree", f"id:{w.group(1)}", "--workspace-status", NEEDS_YOU, "--unread",
+                "--comment", f"⏸ ready now: {i['title'][:70]}", "--json", check=False)
+        log(f"promoted {i['url']} ({m.group(1)}#{m.group(2)} closed)")
+
+
 def last_assistant_text(transcript):
     text = ""
     with open(transcript, errors="ignore") as f:
@@ -206,10 +250,10 @@ def parse_block(text):
             continue
         lm = LINE_RE.match(line)
         if lm:
-            asks.append((lm.group(1).capitalize(), lm.group(2)))
+            asks.append((lm.group(1).capitalize(), lm.group(3), lm.group(2)))
         elif asks and line.startswith(("  ", "\t")):
-            k, t = asks[-1]
-            asks[-1] = (k, t + " " + line.strip())
+            k, t, af = asks[-1]
+            asks[-1] = (k, t + " " + line.strip(), af)
         else:
             break
     return asks
@@ -233,17 +277,18 @@ def cmd_hook():
     ctx = (f"---\nAsked by an agent session `{data.get('session_id')}` in `{cwd}`"
            + (f" (Orca workspace `{os.environ['ORCA_WORKTREE_ID']}`)" if os.environ.get("ORCA_WORKTREE_ID") else "")
            + f".\n\n<details><summary>Agent's message</summary>\n\n{text[-3000:]}\n\n</details>")
-    urgent = []
-    for kind, line in asks:
+    urgent, now = [], [a for a in asks if not a[2]]
+    for kind, line, after in asks:
         title = re.split(r"\s+[—-]\s+blocks\b", line)[0]
         try:
-            url, new = file_ask(kind, title, f"**{kind}:** {line}", repo, ctx)
-            log(f"{'filed' if new else 'exists'} {url} {kind}: {title}")
-            if new and kind in ("Decision", "Action"):
+            url, new = file_ask(kind, title, f"**{kind}:** {line}", repo, ctx, after)
+            log(f"{'filed' if new else 'exists'}{' (parked after ' + after + ')' if after else ''} {url} {kind}: {title}")
+            if new and kind in ("Decision", "Action") and not after:
                 urgent.append((kind, title, url))
         except Exception as e:
             log(f"FAILED {repo} {kind}: {title}: {e}")
-    orca_flag(asks[0][1])
+    if now:
+        orca_flag(now[0][1])
     if urgent:
         where = os.environ.get("ORCA_WORKTREE_ID", cwd).split("::")[-1].rstrip("/").split("/")[-1]
         msg = "\n".join(f"[{k}] {t[:90]}" for k, t, _ in urgent)
@@ -259,8 +304,10 @@ def main():
     f.add_argument("--title", required=True)
     f.add_argument("--body", default="")
     f.add_argument("--repo")
+    f.add_argument("--after", help="park until this PR/issue closes, e.g. smartpbx/patchbay#1949 or #1949")
     sub.add_parser("hook")
     sub.add_parser("answered")
+    sub.add_parser("promote")
     sub.add_parser("list")
     pp = sub.add_parser("push")
     pp.add_argument("--title", required=True)
@@ -272,6 +319,9 @@ def main():
             cmd_hook()
         except Exception as e:
             log(f"hook error: {e}")
+        return
+    if a.cmd == "promote":
+        cmd_promote()
         return
     if a.cmd == "answered":
         try:
@@ -286,9 +336,10 @@ def main():
         print(run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
                   "--sort", "created", "--order", "asc", "--limit", "200"))
         return
-    url, new = file_ask(a.kind, a.title, a.body or a.title, a.repo or repo_for(os.getcwd()))
-    print(("filed " if new else "already open ") + url)
-    orca_flag(a.title)
+    url, new = file_ask(a.kind, a.title, a.body or a.title, a.repo or repo_for(os.getcwd()), after=a.after)
+    print(("filed " if new else "already open ") + url + (f" (parked until {a.after} closes)" if a.after else ""))
+    if not a.after:
+        orca_flag(a.title)
 
 
 if __name__ == "__main__":

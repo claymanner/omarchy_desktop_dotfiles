@@ -75,6 +75,14 @@ NEEDS-CLAYTON
   the Orca card. Anywhere else (Codex, workstation), or for an ask outside a reply, run
   `clayton-ask file --kind Decision|Info|Action --title "..." [--body "..."] [--repo owner/repo]` yourself.
 - Number the lines from 1 in every reply. When he answers "2: …", act on item 2 of your last NEEDS-CLAYTON block.
+- **Only ask for what Clayton can act on right now** (his words, 2026-11-06: "it should only present me with action
+  to do when i can actually do it"):
+  - Never hand him a command or step you can run yourself. Ask for approval instead, as a `[Decision]`, and do it.
+  - If a step must wait for something (a deploy, a merge, a customer reply), and you can do it then: ask for approval
+    now ("OK if I turn on X once #1949 deploys? (rec: yes)") and do it yourself when the time comes.
+  - If it truly needs *his* hands but only after something else happens, tag it with what it waits for:
+    `2. [Action, after patchbay#1949] …`. It's parked (no push, no Needs you) and reaches him automatically once that
+    PR/issue closes (`clayton-ask promote` timer on CT 114, every 10 min). From the CLI: `clayton-ask file … --after <repo>#<n>`.
 - Make each line self-contained: what you need, the options with your recommendation, and what it blocks.
 - Don't keep asking the same thing in prose. Once an ask is filed, refer to its issue.
 - When Clayton answers (in chat or on the issue), act on it and close the issue with a comment.
