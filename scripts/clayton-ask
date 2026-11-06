@@ -3,6 +3,7 @@
 
   clayton-ask file --kind Decision|Info|Action --title "..." [--body "..."] [--repo owner/repo]
   clayton-ask hook            # Claude Code Stop hook: reads hook JSON on stdin
+  clayton-ask answered        # UserPromptSubmit hook: Clayton replied, card leaves Needs you
   clayton-ask list            # open asks across every repo
   clayton-ask push --title T --message M [--url U]   # phone notification via Home Assistant
 
@@ -115,6 +116,37 @@ def orca_flag(title):
     run(*args, check=False)
 
 
+def cmd_answered():
+    """UserPromptSubmit hook: Clayton replied in this workspace.
+
+    If the card is in Needs you: remind the agent which of its asks are still open (so it closes the ones he just
+    answered, even in sessions started before that rule existed), and move the card back to In progress.
+    """
+    sys.stdin.read()
+    wt = os.environ.get("ORCA_WORKTREE_ID")
+    if not wt or wt.endswith("/hq/HQ"):
+        return
+    show = json.loads(run("orca", "worktree", "show", "--worktree", f"id:{wt}", "--json", check=False) or "{}")
+    if ((show.get("result") or {}).get("worktree") or {}).get("workspaceStatus") != NEEDS_YOU:
+        return
+    found = run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
+                "--limit", "300", "--json", "number,title,repository,body", check=False)
+    mine = [i for i in json.loads(found or "[]") if f"`{wt}`" in (i.get("body") or "")]
+    if mine:
+        lines = "\n".join(f"- {i['repository']['nameWithOwner']}#{i['number']}: {i['title']}" for i in mine)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext":
+            "Open asks for Clayton filed from this workspace:\n" + lines + "\nIf his message answers any of them, act "
+            "on it and close each answered one: gh issue close <n> -R <repo> -c 'Clayton: <his answer, short>'. "
+            "Leave the rest open."}}))
+        sys.stdout.flush()
+    if os.fork():
+        return
+    os.setsid()
+    run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--workspace-status", "in-progress", "--read",
+        "--comment", "▶ Clayton replied; agent working", "--json", check=False)
+    log(f"answered: {wt} out of Needs you ({len(mine)} open asks reminded)")
+
+
 def last_assistant_text(transcript):
     text = ""
     with open(transcript, errors="ignore") as f:
@@ -200,6 +232,7 @@ def main():
     f.add_argument("--body", default="")
     f.add_argument("--repo")
     sub.add_parser("hook")
+    sub.add_parser("answered")
     sub.add_parser("list")
     pp = sub.add_parser("push")
     pp.add_argument("--title", required=True)
@@ -211,6 +244,12 @@ def main():
             cmd_hook()
         except Exception as e:
             log(f"hook error: {e}")
+        return
+    if a.cmd == "answered":
+        try:
+            cmd_answered()
+        except Exception as e:
+            log(f"answered error: {e}")
         return
     if a.cmd == "push":
         print("sent" if push(a.title, a.message, a.url) else "not sent (see log / config)")
