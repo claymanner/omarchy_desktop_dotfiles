@@ -219,10 +219,11 @@ def cmd_answered():
     mine = [i for i in json.loads(found or "[]") if f"session `{sid}`" in (i.get("body") or "")]
     if mine:
         lines = "\n".join(f"- {i['repository']['nameWithOwner']}#{i['number']}: {i['title']}" for i in mine)
-        context.append("Open asks for Clayton that THIS session filed (other chats' asks are not yours; don't list "
-                       "them):\n" + lines + "\nIf his message answers any of "
-                       "them, act on it and close each answered one: gh issue close <n> -R <repo> -c 'Clayton: <his "
-                       "answer, short>'. Leave the rest open.")
+        context.append("(Background, don't recite it.) Open asks this session filed earlier, some possibly about older "
+                       "topics:\n" + lines + "\nOnly if his message answers one of these: act on it and close it with "
+                       "gh issue close <n> -R <repo> -c 'Clayton: <short answer>'. Do NOT list these back to him; they "
+                       "are already in his HQ queue. If he asks what's left, answer about your current task and at most "
+                       "say how many older asks are waiting in HQ.")
     emit_context(context)
     if os.fork():
         return

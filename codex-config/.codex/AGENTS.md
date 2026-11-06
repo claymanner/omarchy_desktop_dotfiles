@@ -87,6 +87,8 @@ NEEDS-CLAYTON
     `2. [Action, after patchbay#1949] …`. It's parked (no push, no Needs you) and reaches him automatically once that
     PR/issue closes (`clayton-ask promote` timer on CT 114, every 10 min). From the CLI: `clayton-ask file … --after <repo>#<n>`.
 - Make each line self-contained: what you need, the options with your recommendation, and what it blocks.
+- When he asks "anything left?", answer about **your current task**. Don't re-list older asks; they're in his HQ
+  queue. At most say "N older asks are waiting in HQ".
 - Don't keep asking the same thing in prose. Once an ask is filed, refer to its issue.
 - When Clayton answers (in chat or on the issue), act on it and close the issue with a comment.
 - The full queue: `clayton-ask list`. Design: vault `Orca Playbook.md` → Rule 6.
