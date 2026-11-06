@@ -16,7 +16,7 @@ import argparse, hashlib, json, os, re, subprocess, sys, urllib.request
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
 FALLBACK_REPO = "smartpbx/patchbay"
-NEEDS_YOU = "needs-you"  # Orca board column for cards waiting on Clayton
+NEEDS_YOU = "status-5"  # Orca board column "Needs you" (id assigned by the desktop when the column was added)
 KINDS = ("Decision", "Info", "Action")
 BLOCK_RE = re.compile(r"^\s*\**NEEDS-CLAYTON\**\s*:?\s*$", re.M)
 LINE_RE = re.compile(r"^\s*[-*]\s*\[(Decision|Info|Action)\]\s*(.+?)\s*$", re.I)
