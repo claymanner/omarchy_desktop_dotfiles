@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""to-hq "<message>": hand a piece of Clayton's request to the HQ session, which files and dispatches it.
+
+Use it when Clayton's (often dictated) message contains something outside your own task:
+new build work, another customer/ticket, another repo. Include his words and the context you have.
+"""
+import json, os, subprocess, sys
+
+HQ_PATH = "/root/orca/workspaces/hq/HQ"
+msg = " ".join(sys.argv[1:]).strip() or sys.stdin.read().strip()
+if not msg:
+    sys.exit("usage: to-hq \"<what Clayton asked, his words, and the context you have>\"")
+here = os.environ.get("ORCA_WORKTREE_ID", os.getcwd()).split("::")[-1]
+terms = json.loads(subprocess.run(["orca", "terminal", "list", "--worktree", f"path:{HQ_PATH}", "--json"],
+                                  capture_output=True, text=True).stdout)["result"]["terminals"]
+hq = [t for t in terms if t.get("agentIdentity") == "claude"] or terms
+if not hq:
+    sys.exit("HQ has no live terminal; ask Clayton to open HQ (or file the issue yourself)")
+text = f"[handoff from {here}] {msg}"
+r = json.loads(subprocess.run(["orca", "terminal", "send", "--terminal", hq[0]["handle"], "--text", text,
+                               "--enter", "--json"], capture_output=True, text=True).stdout)
+print("handed to HQ" if r.get("ok") else f"failed: {r.get('error')}")

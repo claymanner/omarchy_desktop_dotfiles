@@ -135,6 +135,18 @@ before more building**:
 Then adjust any running work it affects. "Make as many tickets as needed" means: file them, one per slice, decision and finding.
 
 
+## Clayton talks in whole thoughts: you split them, not him
+
+Clayton usually dictates one long message into whichever chat is in front of him, mixing this task with other work
+(his words, 2026-11-06: "annoying to constantly have to be thinking about what is what"). Never ask him to go
+somewhere else or to re-send part of it. Split it yourself, in the same turn:
+- **Parts that belong to your current task:** do them.
+- **Everything else** (new build work, another customer or ticket, another repo, a reminder): hand it to HQ with
+  `to-hq "<his words, quoted> + the context you have (site, ids, links, what you found)"`. HQ files the issue and
+  starts the right workspace. On the workstation or anywhere `to-hq` doesn't exist, file the issue yourself
+  (`gh issue create … --label from-clayton`) instead.
+- End your reply with one line per handed-off part ("→ HQ: LTE-active alerting"), so he sees nothing was dropped.
+
 ## Asks for Clayton go in the queue, never only in prose
 
 Clayton misses questions and to-dos that are buried in a reply, especially once more messages follow
