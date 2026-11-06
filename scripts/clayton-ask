@@ -279,7 +279,8 @@ def cmd_sweep():
     for w in cards:
         wt = w["worktreeId"]
         here = [b for b in bodies if f"`{wt}`" in b]
-        waiting = [b for b in here if any(f"session `{x}`" in b for x in live if x)]
+        # harvested asks (from old chats, filed in bulk) live in HQ's inbox only; they never hold a card here
+        waiting = [b for b in here if "Harvested 2026-" not in b and any(f"session `{x}`" in b for x in live if x)]
         if waiting:
             continue
         n = len(here)
@@ -348,18 +349,20 @@ def cmd_hook():
     ctx = (f"---\nAsked by an agent session `{data.get('session_id')}` in `{cwd}`"
            + (f" (Orca workspace `{os.environ['ORCA_WORKTREE_ID']}`)" if os.environ.get("ORCA_WORKTREE_ID") else "")
            + f".\n\n<details><summary>Agent's message</summary>\n\n{text[-3000:]}\n\n</details>")
-    urgent, now = [], [a for a in asks if not a[2]]
+    urgent, fresh = [], []
     for kind, line, after in asks:
         title = re.split(r"\s+[—-]\s+blocks\b", line)[0]
         try:
             url, new = file_ask(kind, title, f"**{kind}:** {line}", repo, ctx, after)
             log(f"{'filed' if new else 'exists'}{' (parked after ' + after + ')' if after else ''} {url} {kind}: {title}")
-            if new and kind in ("Decision", "Action") and not after:
-                urgent.append((kind, title, url))
+            if new and not after:
+                fresh.append(title)  # only a genuinely new ask moves the card; re-listed ones don't
+                if kind in ("Decision", "Action"):
+                    urgent.append((kind, title, url))
         except Exception as e:
             log(f"FAILED {repo} {kind}: {title}: {e}")
-    if now:
-        orca_flag(now[0][1], since=stopped_at)
+    if fresh:
+        orca_flag(fresh[0], since=stopped_at)
     if urgent:
         where = os.environ.get("ORCA_WORKTREE_ID", cwd).split("::")[-1].rstrip("/").split("/")[-1]
         msg = "\n".join(f"[{k}] {t[:90]}" for k, t, _ in urgent)
