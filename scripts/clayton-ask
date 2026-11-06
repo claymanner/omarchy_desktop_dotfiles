@@ -16,6 +16,7 @@ import argparse, hashlib, json, os, re, subprocess, sys, urllib.request
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
 FALLBACK_REPO = "smartpbx/patchbay"
+NEEDS_YOU = "needs-you"  # Orca board column for cards waiting on Clayton
 KINDS = ("Decision", "Info", "Action")
 BLOCK_RE = re.compile(r"^\s*\**NEEDS-CLAYTON\**\s*:?\s*$", re.M)
 LINE_RE = re.compile(r"^\s*[-*]\s*\[(Decision|Info|Action)\]\s*(.+?)\s*$", re.I)
@@ -107,8 +108,11 @@ def orca_flag(title):
     wt = os.environ.get("ORCA_WORKTREE_ID")
     if not wt:
         return
-    run("orca", "worktree", "set", "--worktree", f"id:{wt}", "--unread",
-        "--comment", f"⏸ waiting on Clayton: {title[:80]}", "--json", check=False)
+    args = ["orca", "worktree", "set", "--worktree", f"id:{wt}", "--unread",
+            "--comment", f"⏸ waiting on Clayton: {title[:80]}", "--json"]
+    if not wt.endswith("/hq/HQ"):  # HQ's own asks don't move HQ's card
+        args[-1:-1] = ["--workspace-status", NEEDS_YOU]
+    run(*args, check=False)
 
 
 def last_assistant_text(transcript):
