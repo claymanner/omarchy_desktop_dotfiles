@@ -65,6 +65,7 @@ def push(title, message, url=None):
                                  headers={"Authorization": f"Bearer {env['HA_TOKEN']}", "Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=10)
+        log(f"pushed: {title} | {message[:120]}")
         return True
     except Exception as e:
         log(f"push failed: {e}")
