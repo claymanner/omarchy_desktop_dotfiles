@@ -4,13 +4,14 @@
   clayton-ask file --kind Decision|Info|Action --title "..." [--body "..."] [--repo owner/repo]
   clayton-ask hook            # Claude Code Stop hook: reads hook JSON on stdin
   clayton-ask list            # open asks across every repo
+  clayton-ask push --title T --message M [--url U]   # phone notification via Home Assistant
 
 Each ask becomes one issue labelled `ask:clayton`, assigned to Clayton, title prefixed
 [Decision]/[Info]/[Action]. Re-filing the same ask is a no-op (dedupe marker in the body).
 When run inside an Orca terminal, the card gets the unread dot and a "waiting on Clayton" comment.
 Design: vault `30 Resources/Apps/Orca Playbook.md`, Rule 6.
 """
-import argparse, hashlib, json, os, re, subprocess, sys
+import argparse, hashlib, json, os, re, subprocess, sys, urllib.request
 
 ASSIGNEE = "smartpbx"
 LABEL = "ask:clayton"
@@ -19,6 +20,7 @@ KINDS = ("Decision", "Info", "Action")
 BLOCK_RE = re.compile(r"^\s*\**NEEDS-CLAYTON\**\s*:?\s*$", re.M)
 LINE_RE = re.compile(r"^\s*[-*]\s*\[(Decision|Info|Action)\]\s*(.+?)\s*$", re.I)
 LOG = os.path.expanduser("~/.claude/clayton-ask.log")
+PUSH_ENV = os.path.expanduser("~/.config/clayton-ask/env")  # HA_URL, HA_TOKEN, HA_NOTIFY (mode 0600)
 
 
 def log(msg):
@@ -46,6 +48,25 @@ def issues_repo(repo):
     """Repos with issues disabled (forks like smartpbx/fspbx) file into the fallback repo."""
     ok = run("gh", "repo", "view", repo, "--json", "hasIssuesEnabled", "-q", ".hasIssuesEnabled", check=False)
     return repo if ok == "true" else FALLBACK_REPO
+
+
+def push(title, message, url=None):
+    """Phone notification via Home Assistant. Silently skipped when not configured."""
+    if not os.path.exists(PUSH_ENV):
+        return False
+    env = dict(l.strip().split("=", 1) for l in open(PUSH_ENV) if "=" in l and not l.startswith("#"))
+    data = {"title": title, "message": message}
+    if url:
+        data["data"] = {"clickAction": url, "url": url}
+    req = urllib.request.Request(f"{env['HA_URL'].rstrip('/')}/api/services/notify/{env['HA_NOTIFY']}",
+                                 data=json.dumps(data).encode(), method="POST",
+                                 headers={"Authorization": f"Bearer {env['HA_TOKEN']}", "Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except Exception as e:
+        log(f"push failed: {e}")
+        return False
 
 
 def ask_key(kind, title):
@@ -148,14 +169,22 @@ def cmd_hook():
     ctx = (f"---\nAsked by an agent session `{data.get('session_id')}` in `{cwd}`"
            + (f" (Orca workspace `{os.environ['ORCA_WORKTREE_ID']}`)" if os.environ.get("ORCA_WORKTREE_ID") else "")
            + f".\n\n<details><summary>Agent's message</summary>\n\n{text[-3000:]}\n\n</details>")
+    urgent = []
     for kind, line in asks:
         title = re.split(r"\s+[—-]\s+blocks\b", line)[0]
         try:
             url, new = file_ask(kind, title, f"**{kind}:** {line}", repo, ctx)
             log(f"{'filed' if new else 'exists'} {url} {kind}: {title}")
+            if new and kind in ("Decision", "Action"):
+                urgent.append((kind, title, url))
         except Exception as e:
             log(f"FAILED {repo} {kind}: {title}: {e}")
     orca_flag(asks[0][1])
+    if urgent:
+        where = os.environ.get("ORCA_WORKTREE_ID", cwd).split("::")[-1].rstrip("/").split("/")[-1]
+        msg = "\n".join(f"[{k}] {t[:90]}" for k, t, _ in urgent)
+        push(f"Agent waiting on you ({where})" if len(urgent) == 1 else f"{len(urgent)} asks waiting ({where})",
+             msg, urgent[0][2])
 
 
 def main():
@@ -168,12 +197,19 @@ def main():
     f.add_argument("--repo")
     sub.add_parser("hook")
     sub.add_parser("list")
+    pp = sub.add_parser("push")
+    pp.add_argument("--title", required=True)
+    pp.add_argument("--message", required=True)
+    pp.add_argument("--url")
     a = p.parse_args()
     if a.cmd == "hook":
         try:
             cmd_hook()
         except Exception as e:
             log(f"hook error: {e}")
+        return
+    if a.cmd == "push":
+        print("sent" if push(a.title, a.message, a.url) else "not sent (see log / config)")
         return
     if a.cmd == "list":
         print(run("gh", "search", "issues", "--assignee", ASSIGNEE, "--label", LABEL, "--state", "open",
