@@ -151,19 +151,21 @@ somewhere else or to re-send part of it. Split it yourself, in the same turn:
 
 Clayton misses questions and to-dos that are buried in a reply, especially once more messages follow
 (his words, 2026-11-05: "it gets buried in the replies and then missed completely"). So **every**
-decision, piece of info or action you need from him goes in a closing block of your reply, one line each:
+decision, piece of info or action you need from him goes in a closing block of your reply, **numbered**, one per line,
+so he can answer by number ("1: yes, after hours. 2: change it"):
 
 ```
 NEEDS-CLAYTON
-- [Decision] Riley deploy window: tonight 22:00 or Sat AM? (rec: tonight) — blocks #1575
-- [Info] Which Bell circuit ID is the Toronto Bail copper?
-- [Action] Put the Ship24 API key in Vaultwarden as `patchbay/ship24`
+1. [Decision] Riley deploy window: tonight 22:00 or Sat AM? (rec: tonight) — blocks #1575
+2. [Info] Which Bell circuit ID is the Toronto Bail copper?
+3. [Action] Put the Ship24 API key in Vaultwarden as `patchbay/ship24`
 ```
 
 - On CT 114 `dev`, a Stop hook (`/usr/local/bin/clayton-ask hook`) files each line as a GitHub issue in
   the current repo, labelled `ask:clayton` and assigned to him, deduped. It also puts the unread dot on
   the Orca card. Anywhere else (Codex, workstation), or for an ask outside a reply, run
   `clayton-ask file --kind Decision|Info|Action --title "..." [--body "..."] [--repo owner/repo]` yourself.
+- Number the lines from 1 in every reply. When he answers "2: …", act on item 2 of your last NEEDS-CLAYTON block.
 - Make each line self-contained: what you need, the options with your recommendation, and what it blocks.
 - Don't keep asking the same thing in prose. Once an ask is filed, refer to its issue.
 - When Clayton answers (in chat or on the issue), act on it and close the issue with a comment.
