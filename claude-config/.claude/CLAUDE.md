@@ -146,10 +146,10 @@ somewhere else or to re-send part of it. Split it yourself, in the same turn:
   starts the right workspace. On the workstation or anywhere `to-hq` doesn't exist, file the issue yourself
   (`gh issue create … --label from-clayton`) instead.
 - End your reply with one line per handed-off part ("→ HQ: LTE-active alerting"), so he sees nothing was dropped.
-
 - **Never type into another chat with `orca terminal send`.** Clayton may be mid-sentence there, and his half-typed
   text gets merged with yours and submitted (2026-11-06). To message another agent, use `orca-safe-send <handle> <text>`,
   which waits for an empty input box. To hand work to HQ, use `to-hq`, which never touches his HQ chat.
+
 ## Asks for Clayton go in the queue, never only in prose
 
 Clayton misses questions and to-dos that are buried in a reply, especially once more messages follow
