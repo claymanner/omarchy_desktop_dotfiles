@@ -42,6 +42,12 @@ def repo_for(cwd):
     return m.group(1) if m else FALLBACK_REPO
 
 
+def issues_repo(repo):
+    """Repos with issues disabled (forks like smartpbx/fspbx) file into the fallback repo."""
+    ok = run("gh", "repo", "view", repo, "--json", "hasIssuesEnabled", "-q", ".hasIssuesEnabled", check=False)
+    return repo if ok == "true" else FALLBACK_REPO
+
+
 def ask_key(kind, title):
     norm = re.sub(r"\W+", " ", title.lower()).strip()
     return hashlib.sha1(f"{kind}|{norm}".encode()).hexdigest()[:12]
@@ -56,6 +62,10 @@ def file_ask(kind, title, body, repo, context=""):
     kind = kind.capitalize()
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
+    target = issues_repo(repo)
+    if target != repo:
+        context = f"Concerns `{repo}` (issues disabled there).\n\n{context}"
+        repo = target
     title = title.strip().rstrip(".")
     key = ask_key(kind, title)
     marker = f"<!-- ask-key: {key} -->"
